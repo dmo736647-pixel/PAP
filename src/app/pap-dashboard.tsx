@@ -83,6 +83,16 @@ const copy = {
     synced: '12 分钟前已同步',
     processed: '42 封邮件，只有 4 件需要你看',
     language: '语言',
+    resetDemo: '重置演示数据',
+    demoGuideTitle: '这是一个可演示的本地样例',
+    demoGuideBody: 'PAP 已模拟读取邮件和日历：先自动清理低风险事项，再把需要你判断的回复、会议和规则变化放到这里。你可以放心点击确认、编辑、撤销和改边界，数据只保存在本机浏览器。',
+    originalSummary: '原邮件在说什么',
+    papSuggestion: 'PAP 建议怎么做',
+    confirmOutcome: '点确认会执行',
+    confirmationReason: '为什么需要确认',
+    boundaryAutoTitle: '这些 PAP 可以自动做',
+    boundaryAskTitle: '这些必须先问我',
+    boundaryNeverTitle: '这些永远不能做',
     todayBriefing: '今日简报',
     todayHeading: '今天有 {count} 件事需要你决定',
     todaySubheading: 'PAP 已清掉低价值事项，把真正需要判断的动作放在前面。',
@@ -183,6 +193,16 @@ const copy = {
     synced: 'Synced 12 min ago',
     processed: '42 emails, only 4 need your attention',
     language: 'Language',
+    resetDemo: 'Reset demo',
+    demoGuideTitle: 'This is a local demo workspace',
+    demoGuideBody: 'PAP has simulated reading email and calendar activity: it clears low-risk work first, then brings replies, meetings, and rule changes that need your judgment here. You can safely click confirm, edit, undo, and change rules; data is only stored in this browser.',
+    originalSummary: 'What the original email says',
+    papSuggestion: 'What PAP recommends',
+    confirmOutcome: 'What confirm will do',
+    confirmationReason: 'Why confirmation is needed',
+    boundaryAutoTitle: 'PAP can do these automatically',
+    boundaryAskTitle: 'PAP must ask me first',
+    boundaryNeverTitle: 'PAP must never do these',
     todayBriefing: 'Today Briefing',
     todayHeading: '{count} things need your decision today',
     todaySubheading: 'PAP cleared low-value work and brought the real decisions forward.',
@@ -478,6 +498,13 @@ export default function Dashboard() {
     setDraft(editedDrafts[action.id] ?? localized.preparedReply ?? localized.summary);
   }
 
+  function resetDemo() {
+    window.localStorage.removeItem(storageKey);
+    setPersistedState(defaultDashboardState);
+    setEditingActionId(null);
+    setDraft('');
+  }
+
   function saveEdit(action: SuggestedAction) {
     const title = localizedAction(action, locale).title;
     setPersistedState((current) => ({
@@ -499,7 +526,9 @@ export default function Dashboard() {
   }
 
   return (
-    <AppShell locale={locale} onLocaleChange={setLocale}>
+    <AppShell locale={locale} onLocaleChange={setLocale} onResetDemo={resetDemo}>
+      <DemoGuide locale={locale} />
+
       <section id="today" className="space-y-6">
         <PageHeader
           eyebrow={t.todayBriefing}
@@ -622,7 +651,12 @@ export default function Dashboard() {
   );
 }
 
-function AppShell(props: { locale: Locale; onLocaleChange: (locale: Locale) => void; children: ReactNode }) {
+function AppShell(props: {
+  locale: Locale;
+  onLocaleChange: (locale: Locale) => void;
+  onResetDemo: () => void;
+  children: ReactNode;
+}) {
   const t = copy[props.locale];
   const navItems = [
     { href: '#today', label: t.navToday },
@@ -650,21 +684,29 @@ function AppShell(props: { locale: Locale; onLocaleChange: (locale: Locale) => v
                 </a>
               ))}
             </nav>
-            <div className="mt-auto pt-6">
-              <p className="mb-2 text-xs uppercase tracking-[0.2em] text-stone-500">{t.language}</p>
-              <div className="flex rounded-full border border-emerald-300/20 bg-black/25 p-1 text-sm">
-                <button
-                  className={`flex-1 rounded-full px-3 py-2 ${props.locale === 'zh' ? 'bg-emerald-300 text-emerald-950' : 'text-emerald-100'}`}
-                  onClick={() => props.onLocaleChange('zh')}
-                >
-                  中文
-                </button>
-                <button
-                  className={`flex-1 rounded-full px-3 py-2 ${props.locale === 'en' ? 'bg-emerald-300 text-emerald-950' : 'text-emerald-100'}`}
-                  onClick={() => props.onLocaleChange('en')}
-                >
-                  English
-                </button>
+            <div className="mt-auto space-y-4 pt-6">
+              <button
+                className="w-full rounded-full border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-300 hover:text-amber-950"
+                onClick={props.onResetDemo}
+              >
+                {t.resetDemo}
+              </button>
+              <div>
+                <p className="mb-2 text-xs uppercase tracking-[0.2em] text-stone-500">{t.language}</p>
+                <div className="flex rounded-full border border-emerald-300/20 bg-black/25 p-1 text-sm">
+                  <button
+                    className={`flex-1 rounded-full px-3 py-2 ${props.locale === 'zh' ? 'bg-emerald-300 text-emerald-950' : 'text-emerald-100'}`}
+                    onClick={() => props.onLocaleChange('zh')}
+                  >
+                    中文
+                  </button>
+                  <button
+                    className={`flex-1 rounded-full px-3 py-2 ${props.locale === 'en' ? 'bg-emerald-300 text-emerald-950' : 'text-emerald-100'}`}
+                    onClick={() => props.onLocaleChange('en')}
+                  >
+                    English
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -692,6 +734,25 @@ function SyncStatus(props: { locale: Locale }) {
         <p className="text-lg font-semibold">2026-05-04</p>
       </div>
     </header>
+  );
+}
+
+function DemoGuide(props: { locale: Locale }) {
+  const t = copy[props.locale];
+
+  return (
+    <section className="rounded-[2rem] border border-cyan-300/20 bg-cyan-950/25 p-5 shadow-xl shadow-black/20">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200">Demo Guide</p>
+          <h2 className="mt-2 text-2xl font-semibold text-stone-50">{t.demoGuideTitle}</h2>
+          <p className="mt-3 max-w-4xl text-sm leading-7 text-cyan-50/85">{t.demoGuideBody}</p>
+        </div>
+        <div className="rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-cyan-950">
+          {t.processed}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -774,10 +835,20 @@ function PendingConfirmationCard(props: {
       </div>
       <div className="mt-4">
         <h3 className="text-2xl font-semibold leading-tight text-stone-50">{action.title}</h3>
-        <p className="mt-2 text-base leading-7 text-stone-200">{action.recommendation}</p>
       </div>
-      <div className="mt-4 rounded-2xl bg-[#07110f] p-4 ring-1 ring-white/5">
-        <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{t.preparedDraft}</p>
+      <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+        <div className="rounded-2xl bg-[#07110f] p-4 ring-1 ring-white/5">
+          <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{t.originalSummary}</p>
+          <p className="mt-2 leading-6 text-stone-200">{action.sourceSummary}</p>
+        </div>
+        <div className="rounded-2xl bg-[#07110f] p-4 ring-1 ring-white/5">
+          <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{t.papSuggestion}</p>
+          <p className="mt-2 leading-6 text-stone-200">{action.recommendation}</p>
+        </div>
+      </div>
+      <div className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-950/20 p-4 ring-1 ring-white/5">
+        <p className="text-xs uppercase tracking-[0.18em] text-emerald-200">{t.confirmOutcome}</p>
+        <p className="mt-1 text-sm text-stone-400">{t.preparedDraft}</p>
         {props.editing ? (
           <div className="mt-3 space-y-3">
             <label className="sr-only" htmlFor={`edit-${props.action.id}`}>{t.editLabel}</label>
@@ -794,12 +865,11 @@ function PendingConfirmationCard(props: {
             </div>
           </div>
         ) : (
-          <p className="mt-2 whitespace-pre-wrap text-base leading-7 text-stone-200">{preparedDraft ?? t.noDraftNeeded}</p>
+          <p className="mt-3 whitespace-pre-wrap text-base leading-7 text-stone-100">{preparedDraft ?? t.noDraftNeeded}</p>
         )}
       </div>
-      <div className="mt-4 grid gap-3 rounded-2xl bg-[#07110f] p-4 text-sm ring-1 ring-white/5 md:grid-cols-3">
-        <DetailLine label={t.source}>{action.sourceSummary}</DetailLine>
-        <DetailLine label={t.why}>{action.rationale}</DetailLine>
+      <div className="mt-4 grid gap-3 rounded-2xl bg-[#07110f] p-4 text-sm ring-1 ring-white/5 md:grid-cols-2">
+        <DetailLine label={t.confirmationReason}>{action.rationale}</DetailLine>
         <DetailLine label={t.riskNote}>{action.riskNote}</DetailLine>
       </div>
       {props.email && <OriginalEmail email={props.email} locale={props.locale} />}
@@ -1015,7 +1085,7 @@ function AutomationBoundarySection(props: {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <article className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
-        <h3 className="text-lg font-semibold text-stone-50">{t.canDo}</h3>
+        <h3 className="text-lg font-semibold text-stone-50">{t.boundaryAutoTitle}</h3>
         <p className="mt-3 text-sm leading-6 text-stone-300">{t.canDoText}</p>
         <div className="mt-5 space-y-3">
           {permissionLabels.map((item) => {
@@ -1036,7 +1106,7 @@ function AutomationBoundarySection(props: {
       </article>
 
       <article className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
-        <h3 className="text-lg font-semibold text-stone-50">{t.mustAsk}</h3>
+        <h3 className="text-lg font-semibold text-stone-50">{t.boundaryAskTitle}</h3>
         <p className="mt-3 text-sm leading-6 text-stone-300">{t.mustAskText}</p>
         <div className="mt-5 space-y-3">
           {props.preferences.contacts.map((contact) => (
@@ -1073,7 +1143,7 @@ function AutomationBoundarySection(props: {
       </article>
 
       <article className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
-        <h3 className="text-lg font-semibold text-stone-50">{t.mustNever}</h3>
+        <h3 className="text-lg font-semibold text-stone-50">{t.boundaryNeverTitle}</h3>
         <p className="mt-3 text-sm leading-6 text-stone-300">{t.mustNeverText}</p>
         <div className="mt-5 flex gap-2">
           <input

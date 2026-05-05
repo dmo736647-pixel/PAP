@@ -15,6 +15,8 @@ describe('PAP dashboard', () => {
     render(<Home />);
 
     expect(screen.getByText('今日简报')).toBeInTheDocument();
+    expect(screen.getByText('这是一个可演示的本地样例')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重置演示数据' })).toBeInTheDocument();
     expect(screen.getByText('这些动作等你点头')).toBeInTheDocument();
     expect(screen.getByText('PAP 已替你清掉这些事')).toBeInTheDocument();
     expect(screen.getByText('这些时间可以直接发')).toBeInTheDocument();
@@ -24,6 +26,7 @@ describe('PAP dashboard', () => {
     await user.click(screen.getByRole('button', { name: 'English' }));
 
     expect(screen.getByText('Today Briefing')).toBeInTheDocument();
+    expect(screen.getByText('This is a local demo workspace')).toBeInTheDocument();
     expect(screen.getByText('These actions need your yes')).toBeInTheDocument();
     expect(screen.getByText('PAP cleared these for you')).toBeInTheDocument();
     expect(screen.getByText('These times are ready to send')).toBeInTheDocument();
@@ -37,7 +40,9 @@ describe('PAP dashboard', () => {
 
     expect(screen.getAllByText('高风险')[0]).toBeInTheDocument();
     expect(screen.getAllByText('回复 Maya：先不承诺周五交付')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('PAP 建议怎么做')[0]).toBeInTheDocument();
     expect(screen.getAllByText('发送一版谨慎回复：先确认范围，不承诺日期。')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('点确认会执行')[0]).toBeInTheDocument();
     expect(screen.getAllByText('PAP 准备发送')[0]).toBeInTheDocument();
     expect(screen.getAllByText(/Hi Maya，我先确认一下合同范围/)[0]).toBeInTheDocument();
     expect(screen.getAllByText('合同 + 交付时间 = 必须确认。')[0]).toBeInTheDocument();
@@ -139,11 +144,28 @@ describe('PAP dashboard', () => {
     expect(screen.getAllByRole('button', { name: '确认执行' })[0]).toBeInTheDocument();
   });
 
+  it('resets persisted demo state from the sidebar', async () => {
+    const user = userEvent.setup();
+
+    render(<Home />);
+
+    await user.click(screen.getAllByRole('button', { name: '确认执行' })[0]);
+    expect(screen.getByText('已确认')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '重置演示数据' }));
+
+    expect(screen.queryByText('已确认')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '确认执行' })[0]).toBeInTheDocument();
+  });
+
   it('edits automation permissions and persists the boundary change', async () => {
     const user = userEvent.setup();
 
     const { unmount } = render(<Home />);
 
+    expect(screen.getByText('这些 PAP 可以自动做')).toBeInTheDocument();
+    expect(screen.getByText('这些必须先问我')).toBeInTheDocument();
+    expect(screen.getByText('这些永远不能做')).toBeInTheDocument();
     expect(screen.getByText('PAP 已替你清掉这些事')).toBeInTheDocument();
     expect(screen.getByText('归档低价值营销邮件')).toBeInTheDocument();
 
