@@ -15,7 +15,8 @@ describe('PAP dashboard', () => {
     render(<Home />);
 
     expect(screen.getByText('今日简报')).toBeInTheDocument();
-    expect(screen.getByText('这是一个可演示的本地样例')).toBeInTheDocument();
+    expect(screen.queryByText('这是一个可演示的本地样例')).not.toBeInTheDocument();
+    expect(screen.getByText('低风险事项已自动归档或总结；重要回复和会议安排在下方等待确认。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '重置演示数据' })).toBeInTheDocument();
     expect(screen.getByText('这些动作等你点头')).toBeInTheDocument();
     expect(screen.getByText('PAP 已替你清掉这些事')).toBeInTheDocument();
@@ -26,7 +27,7 @@ describe('PAP dashboard', () => {
     await user.click(screen.getByRole('button', { name: 'English' }));
 
     expect(screen.getByText('Today Briefing')).toBeInTheDocument();
-    expect(screen.getByText('This is a local demo workspace')).toBeInTheDocument();
+    expect(screen.queryByText('This is a local demo workspace')).not.toBeInTheDocument();
     expect(screen.getByText('These actions need your yes')).toBeInTheDocument();
     expect(screen.getByText('PAP cleared these for you')).toBeInTheDocument();
     expect(screen.getByText('These times are ready to send')).toBeInTheDocument();

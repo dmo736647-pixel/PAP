@@ -84,8 +84,7 @@ const copy = {
     processed: '42 封邮件，只有 4 件需要你看',
     language: '语言',
     resetDemo: '重置演示数据',
-    demoGuideTitle: '这是一个可演示的本地样例',
-    demoGuideBody: 'PAP 已模拟读取邮件和日历：先自动清理低风险事项，再把需要你判断的回复、会议和规则变化放到这里。你可以放心点击确认、编辑、撤销和改边界，数据只保存在本机浏览器。',
+    statusDetail: '低风险事项已自动归档或总结；重要回复和会议安排在下方等待确认。',
     originalSummary: '原邮件在说什么',
     papSuggestion: 'PAP 建议怎么做',
     confirmOutcome: '点确认会执行',
@@ -194,8 +193,7 @@ const copy = {
     processed: '42 emails, only 4 need your attention',
     language: 'Language',
     resetDemo: 'Reset demo',
-    demoGuideTitle: 'This is a local demo workspace',
-    demoGuideBody: 'PAP has simulated reading email and calendar activity: it clears low-risk work first, then brings replies, meetings, and rule changes that need your judgment here. You can safely click confirm, edit, undo, and change rules; data is only stored in this browser.',
+    statusDetail: 'Low-risk items were archived or summarized; important replies and meeting coordination wait below for confirmation.',
     originalSummary: 'What the original email says',
     papSuggestion: 'What PAP recommends',
     confirmOutcome: 'What confirm will do',
@@ -527,8 +525,6 @@ export default function Dashboard() {
 
   return (
     <AppShell locale={locale} onLocaleChange={setLocale} onResetDemo={resetDemo}>
-      <DemoGuide locale={locale} />
-
       <section id="today" className="space-y-6">
         <PageHeader
           eyebrow={t.todayBriefing}
@@ -728,31 +724,13 @@ function SyncStatus(props: { locale: Locale }) {
       <div>
         <p className="text-sm font-medium uppercase tracking-[0.28em] text-emerald-200">{t.demoWorkspace}</p>
         <p className="mt-3 text-2xl font-semibold text-stone-50">{t.processed}</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/80">{t.statusDetail}</p>
       </div>
       <div className="mt-4 rounded-2xl bg-emerald-300 px-5 py-4 text-emerald-950 md:mt-0">
         <p className="text-sm font-medium">{t.synced}</p>
         <p className="text-lg font-semibold">2026-05-04</p>
       </div>
     </header>
-  );
-}
-
-function DemoGuide(props: { locale: Locale }) {
-  const t = copy[props.locale];
-
-  return (
-    <section className="rounded-[2rem] border border-cyan-300/20 bg-cyan-950/25 p-5 shadow-xl shadow-black/20">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200">Demo Guide</p>
-          <h2 className="mt-2 text-2xl font-semibold text-stone-50">{t.demoGuideTitle}</h2>
-          <p className="mt-3 max-w-4xl text-sm leading-7 text-cyan-50/85">{t.demoGuideBody}</p>
-        </div>
-        <div className="rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-cyan-950">
-          {t.processed}
-        </div>
-      </div>
-    </section>
   );
 }
 
