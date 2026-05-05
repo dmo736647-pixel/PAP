@@ -99,13 +99,16 @@ const copy = {
     handledMetric: '已替你清理',
     meetingMetric: '可安排会议',
     importantMetric: '重要邮件',
+    meetingsDone: '会议协调已处理完。',
     topPriorities: '今天先看',
-    pendingPreview: '现在要决定',
+    pendingPreview: '确认队列摘要',
     autoSummary: '其余 {count} 个低价值事项已自动处理。',
+    previewCta: '去确认',
     pending: '待你确认',
     pendingHeading: '这些动作等你点头',
-    pendingDescription: '先看建议动作；原因、风险和来源收在卡片底部。',
-    filters: '全部 · 回复 · 会议 · 高风险',
+    pendingDescription: 'PAP 已写好草稿；你只需要确认、修改或拒绝。',
+    pendingQueueSummary: '先处理 {count} 个确认',
+    pendingQueueTrust: '发送、承诺和改日历前都会停在这里。',
     recommendation: '建议动作',
     why: '为什么',
     riskNote: '风险',
@@ -166,6 +169,20 @@ const copy = {
     startHour: '开始',
     endHour: '结束',
     activity: '刚刚完成',
+    outcomeTitle: 'PAP 刚刚完成并留痕',
+    outcomeSummary: '本轮已完成 {count} 个动作 · 已留下 {count} 条记录',
+    outcomeConfirmed: '已执行：{title}。待确认列表已更新，记录已保存。',
+    outcomeRejected: '已拒绝：{title}。PAP 不会执行这一步，记录已保存。',
+    outcomeDraftEdited: '草稿已保存：{title}。下次确认会使用修改版。',
+    outcomeSettingsChanged: '边界已更新：{title}。以后会按新规则处理。',
+    outcomeSlotUsed: '会议时间已选：{title}。可追踪记录已保存。',
+    outcomeMoreOptions: '已请求更多时间：{title}。PAP 会继续找更合适的选项。',
+    meetingInlineDone: '已选择这个会议时间，并保存到本地演示记录。',
+    meetingInlineMore: '已请求更多时间，PAP 会继续找更合适的选项。',
+    outcomeUndone: '已撤销：{title}。这次自动处理已回退并留痕。',
+    outcomeWrong: '已记录纠正：{title}。PAP 会把这次反馈作为边界信号。',
+    outcomeAlwaysAsk: '已记住偏好：{title}。以后类似事项会先问你。',
+    localRecordSaved: '已保存到本地演示记录。',
     confirmedTitle: '已确认',
     rejectedTitle: '已拒绝',
     undoneTitle: '已撤销',
@@ -208,13 +225,16 @@ const copy = {
     handledMetric: 'Cleared for you',
     meetingMetric: 'Ready meetings',
     importantMetric: 'Important emails',
+    meetingsDone: 'Meeting coordination is done.',
     topPriorities: 'Start here',
-    pendingPreview: 'Decide now',
+    pendingPreview: 'Confirmation queue summary',
     autoSummary: '{count} low-value items were handled automatically.',
+    previewCta: 'Review confirmations',
     pending: 'Pending Confirmation',
     pendingHeading: 'These actions need your yes',
-    pendingDescription: 'Read the suggested action first; reason, risk, and source stay secondary.',
-    filters: 'All · Replies · Meetings · High risk',
+    pendingDescription: 'PAP has prepared the drafts; you only confirm, edit, or reject.',
+    pendingQueueSummary: 'Resolve {count} confirmations first',
+    pendingQueueTrust: 'Sends, commitments, and calendar changes stop here first.',
     recommendation: 'Suggested action',
     why: 'Why',
     riskNote: 'Risk',
@@ -275,6 +295,20 @@ const copy = {
     startHour: 'Start',
     endHour: 'End',
     activity: 'Just done',
+    outcomeTitle: 'PAP just completed this and kept a record',
+    outcomeSummary: '{count} actions completed this round · {count} records saved',
+    outcomeConfirmed: 'Done: {title}. The pending list was updated and the record was saved.',
+    outcomeRejected: 'Rejected: {title}. PAP will not do this step, and the record was saved.',
+    outcomeDraftEdited: 'Draft saved: {title}. The edited version will be used when you confirm.',
+    outcomeSettingsChanged: 'Rules updated: {title}. PAP will use this boundary next time.',
+    outcomeSlotUsed: 'Meeting time selected: {title}. A traceable record was saved.',
+    outcomeMoreOptions: 'More times requested: {title}. PAP will keep looking for better options.',
+    meetingInlineDone: 'This meeting time was selected and saved to the local demo record.',
+    meetingInlineMore: 'More times were requested, so PAP will keep looking for better options.',
+    outcomeUndone: 'Undone: {title}. The automatic handling was rolled back and recorded.',
+    outcomeWrong: 'Correction recorded: {title}. PAP will treat this as a boundary signal.',
+    outcomeAlwaysAsk: 'Preference saved: {title}. Similar items will ask you first.',
+    localRecordSaved: 'Saved to the local demo record.',
     confirmedTitle: 'Confirmed',
     rejectedTitle: 'Rejected',
     undoneTitle: 'Undone',
@@ -432,6 +466,9 @@ export default function Dashboard() {
   const automaticActions = briefing.automaticallyHandled.filter(
     (action) => !results.some((result) => result.id === action.id && result.status === 'undone'),
   );
+  const meetingSuggestions = briefing.meetingSuggestions.filter(
+    (suggestion) => !results.some((result) => result.id === `${suggestion.emailId}_slot`),
+  );
 
   function appendAuditEvent(actionId: string, title: string, eventType: AuditEventType) {
     setPersistedState((current) => ({
@@ -525,56 +562,16 @@ export default function Dashboard() {
 
   return (
     <AppShell locale={locale} onLocaleChange={setLocale} onResetDemo={resetDemo}>
-      <section id="today" className="space-y-6">
-        <PageHeader
-          eyebrow={t.todayBriefing}
-          title={interpolate(t.todayHeading, pendingActions.length)}
-          description={t.todaySubheading}
-        />
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <SectionPanel title={t.pendingPreview} description={t.neverSend} priority>
-            <div className="space-y-4">
-              {pendingActions.slice(0, 2).map((action) => (
-                <PendingConfirmationCard
-                  key={action.id}
-                  action={action}
-                  email={emailsById.get(action.emailId)}
-                  locale={locale}
-                  compact
-                  editedDraft={editedDrafts[action.id]}
-                  editing={editingActionId === action.id}
-                  draft={draft}
-                  onDraftChange={setDraft}
-                  onConfirm={() => recordActionResult(action, 'confirmed')}
-                  onReject={() => recordActionResult(action, 'rejected')}
-                  onEdit={() => startEdit(action)}
-                  onSave={() => saveEdit(action)}
-                  onCancel={() => setEditingActionId(null)}
-                  onRuleAction={() => recordResult(localizedAction(action, locale).ruleAction, 'alwaysAsk', `${action.id}_rule`)}
-                />
-              ))}
-            </div>
-          </SectionPanel>
-          <div className="space-y-4">
-            <MetricGrid
-              metrics={[
-                { label: t.pendingMetric, value: pendingActions.length },
-                { label: t.handledMetric, value: automaticActions.length },
-                { label: t.meetingMetric, value: briefing.meetingSuggestions.length },
-                { label: t.importantMetric, value: briefing.importantEmails.length },
-              ]}
-            />
-            <SectionPanel title={t.topPriorities} description={interpolate(t.autoSummary, briefing.lowValueHandledCount)}>
-              <BriefingPriorityList priorities={briefing.topPriorities.slice(0, 3)} locale={locale} />
-            </SectionPanel>
-          </div>
-        </div>
-      </section>
+      <OutcomeFeedbackBar locale={locale} events={persistedState.auditEvents} />
 
-      <section id="pending" className="space-y-6">
+      <section id="pending" className="space-y-6 rounded-[2rem] border border-emerald-300/20 bg-[#0b1b17] p-4 shadow-2xl shadow-black/25 md:p-6">
         <PageHeader eyebrow={t.pending} title={t.pendingHeading} description={t.pendingDescription} />
-        <div className="rounded-2xl border border-emerald-300/10 bg-stone-950/50 px-4 py-3 text-sm text-stone-300">
-          {t.filters}
+        <div className="grid gap-3 rounded-3xl border border-emerald-300/15 bg-stone-950/50 p-4 text-sm text-stone-300 md:grid-cols-[1fr_auto] md:items-center">
+          <div>
+            <p className="text-2xl font-semibold text-emerald-100">{interpolate(t.pendingQueueSummary, pendingActions.length)}</p>
+            <p className="mt-1 text-stone-400">{t.pendingQueueTrust}</p>
+          </div>
+          <p className="rounded-full bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950">{t.neverSend}</p>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
           {pendingActions.map((action) => (
@@ -598,15 +595,61 @@ export default function Dashboard() {
         </div>
       </section>
 
+      <section id="today" className="space-y-6">
+        <PageHeader
+          eyebrow={t.todayBriefing}
+          title={interpolate(t.todayHeading, pendingActions.length)}
+          description={t.todaySubheading}
+        />
+        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <SectionPanel title={t.pendingPreview} description={t.neverSend} priority>
+            <div className="space-y-4">
+              <p className="text-5xl font-semibold text-emerald-200">{pendingActions.length}</p>
+              <ol className="space-y-3">
+                {pendingActions.slice(0, 2).map((action, index) => (
+                  <li key={action.id} className="flex gap-3 rounded-2xl bg-stone-950/60 p-4 text-stone-100 ring-1 ring-white/5">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-300 text-sm font-semibold text-emerald-950">
+                      {index + 1}
+                    </span>
+                    <span>{localizedAction(action, locale).title}</span>
+                  </li>
+                ))}
+              </ol>
+              <a className="inline-flex rounded-full bg-emerald-300 px-5 py-2.5 text-sm font-semibold text-emerald-950" href="#pending">
+                {t.previewCta}
+              </a>
+            </div>
+          </SectionPanel>
+          <div className="space-y-4">
+            <MetricGrid
+              metrics={[
+                { label: t.pendingMetric, value: pendingActions.length },
+                { label: t.handledMetric, value: automaticActions.length },
+                { label: t.meetingMetric, value: meetingSuggestions.length },
+                { label: t.importantMetric, value: briefing.importantEmails.length },
+              ]}
+            />
+            <SectionPanel title={t.topPriorities} description={interpolate(t.autoSummary, briefing.lowValueHandledCount)}>
+              <BriefingPriorityList priorities={briefing.topPriorities.slice(0, 3)} locale={locale} />
+            </SectionPanel>
+          </div>
+        </div>
+      </section>
+
       <section id="meetings" className="space-y-6">
         <PageHeader eyebrow={t.meeting} title={t.meetingHeading} description={t.meetingDescription} />
         <div className="grid gap-4 lg:grid-cols-2">
-          {briefing.meetingSuggestions.map((suggestion) => (
+          {meetingSuggestions.length === 0 ? (
+            <p className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 text-sm font-medium text-emerald-100 shadow-lg shadow-black/20">
+              {t.meetingsDone}
+            </p>
+          ) : meetingSuggestions.map((suggestion) => (
             <MeetingSuggestionCard
               key={suggestion.emailId}
               suggestion={suggestion}
               email={emailsById.get(suggestion.emailId)}
               locale={locale}
+              result={results.find((result) => result.id === `${suggestion.emailId}_more`)}
               onUseSlot={(title) => recordResult(title, 'slotUsed', `${suggestion.emailId}_slot`)}
               onMoreTimes={(title) => recordResult(title, 'moreOptions', `${suggestion.emailId}_more`)}
             />
@@ -788,7 +831,6 @@ function PendingConfirmationCard(props: {
   action: SuggestedAction;
   email?: EmailMessage;
   locale: Locale;
-  compact?: boolean;
   editedDraft?: string;
   editing?: boolean;
   draft?: string;
@@ -811,20 +853,8 @@ function PendingConfirmationCard(props: {
           <Chip key={chip}>{chip}</Chip>
         ))}
       </div>
-      <div className="mt-4">
-        <h3 className="text-2xl font-semibold leading-tight text-stone-50">{action.title}</h3>
-      </div>
-      <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
-        <div className="rounded-2xl bg-[#07110f] p-4 ring-1 ring-white/5">
-          <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{t.originalSummary}</p>
-          <p className="mt-2 leading-6 text-stone-200">{action.sourceSummary}</p>
-        </div>
-        <div className="rounded-2xl bg-[#07110f] p-4 ring-1 ring-white/5">
-          <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{t.papSuggestion}</p>
-          <p className="mt-2 leading-6 text-stone-200">{action.recommendation}</p>
-        </div>
-      </div>
-      <div className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-950/20 p-4 ring-1 ring-white/5">
+      <h3 className="mt-4 text-2xl font-semibold leading-tight text-stone-50">{action.title}</h3>
+      <div className="mt-5 rounded-2xl border border-emerald-300/25 bg-emerald-950/25 p-4 ring-1 ring-white/5">
         <p className="text-xs uppercase tracking-[0.18em] text-emerald-200">{t.confirmOutcome}</p>
         <p className="mt-1 text-sm text-stone-400">{t.preparedDraft}</p>
         {props.editing ? (
@@ -846,19 +876,29 @@ function PendingConfirmationCard(props: {
           <p className="mt-3 whitespace-pre-wrap text-base leading-7 text-stone-100">{preparedDraft ?? t.noDraftNeeded}</p>
         )}
       </div>
+      <div className="mt-5 flex flex-wrap gap-2">
+        <button className="rounded-full bg-emerald-300 px-5 py-2.5 text-sm font-semibold text-emerald-950" onClick={props.onConfirm}>{t.confirm}</button>
+        <button className="rounded-full bg-stone-800 px-4 py-2.5 text-sm font-semibold text-stone-200" onClick={props.onEdit}>{t.edit}</button>
+        <button className="rounded-full bg-stone-800 px-4 py-2.5 text-sm font-semibold text-stone-200" onClick={props.onReject}>{t.reject}</button>
+      </div>
+      <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+        <div className="rounded-2xl bg-[#07110f] p-4 ring-1 ring-white/5">
+          <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{t.papSuggestion}</p>
+          <p className="mt-2 leading-6 text-stone-200">{action.recommendation}</p>
+        </div>
+        <div className="rounded-2xl bg-[#07110f] p-4 ring-1 ring-white/5">
+          <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{t.originalSummary}</p>
+          <p className="mt-2 leading-6 text-stone-200">{action.sourceSummary}</p>
+        </div>
+      </div>
       <div className="mt-4 grid gap-3 rounded-2xl bg-[#07110f] p-4 text-sm ring-1 ring-white/5 md:grid-cols-2">
         <DetailLine label={t.confirmationReason}>{action.rationale}</DetailLine>
         <DetailLine label={t.riskNote}>{action.riskNote}</DetailLine>
       </div>
       {props.email && <OriginalEmail email={props.email} locale={props.locale} />}
       <p className="mt-4 text-sm font-medium text-amber-200">{t.neverSend}</p>
-      <div className="mt-5 flex flex-wrap gap-2">
-        <button className="rounded-full bg-emerald-300 px-5 py-2.5 text-sm font-semibold text-emerald-950" onClick={props.onConfirm}>{t.confirm}</button>
-        <button className="rounded-full bg-stone-800 px-4 py-2.5 text-sm font-semibold text-stone-200" onClick={props.onEdit}>{t.edit}</button>
-        <button className="rounded-full bg-stone-800 px-4 py-2.5 text-sm font-semibold text-stone-200" onClick={props.onReject}>{t.reject}</button>
-        {!props.compact && (
-          <button className="rounded-full border border-emerald-300/30 px-4 py-2.5 text-sm font-semibold text-emerald-100" onClick={props.onRuleAction}>{action.ruleAction}</button>
-        )}
+      <div className="mt-3">
+        <button className="rounded-full border border-emerald-300/30 px-4 py-2.5 text-sm font-semibold text-emerald-100" onClick={props.onRuleAction}>{action.ruleAction}</button>
       </div>
     </article>
   );
@@ -903,6 +943,7 @@ function MeetingSuggestionCard(props: {
   suggestion: MeetingSuggestion;
   email?: EmailMessage;
   locale: Locale;
+  result?: ActionResult;
   onUseSlot: (title: string) => void;
   onMoreTimes: (title: string) => void;
 }) {
@@ -938,6 +979,11 @@ function MeetingSuggestionCard(props: {
         <p className="mt-2 text-base leading-7 text-stone-200">{meeting.draftReply}</p>
       </div>
       {props.email && <OriginalEmail email={props.email} locale={props.locale} />}
+      {props.result && (
+        <p className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-950/30 p-4 text-sm font-medium text-emerald-100">
+          {props.result.status === 'slotUsed' ? t.meetingInlineDone : t.meetingInlineMore}
+        </p>
+      )}
       <div className="mt-5 flex flex-wrap gap-2">
         <button className="rounded-full bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950" onClick={() => props.onUseSlot(firstSlot ? `${meeting.title} · ${formatTimeInZone(firstSlot.startsAt, props.locale, meeting.participantTimeZone)}` : meeting.title)}>{t.useSlot}</button>
         <button className="rounded-full bg-stone-800 px-4 py-2 text-sm font-semibold text-stone-200">{t.editReply}</button>
@@ -1154,6 +1200,25 @@ function AutomationBoundarySection(props: {
   );
 }
 
+function OutcomeFeedbackBar(props: { locale: Locale; events: AuditEvent[] }) {
+  const t = copy[props.locale];
+  const latestEvent = latestAuditEvent(props.events);
+
+  if (!latestEvent) return null;
+
+  return (
+    <section className="rounded-[2rem] border border-emerald-300/20 bg-[linear-gradient(135deg,#12352d,#07110f)] p-5 shadow-2xl shadow-black/25 md:flex md:items-center md:justify-between md:gap-6">
+      <div>
+        <p className="text-sm font-medium uppercase tracking-[0.25em] text-emerald-200">{t.outcomeTitle}</p>
+        <p className="mt-3 text-lg font-semibold leading-7 text-stone-50">{outcomeMessage(latestEvent, props.locale)}</p>
+      </div>
+      <p className="mt-4 rounded-full bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950 md:mt-0">
+        {interpolate(t.outcomeSummary, props.events.length)}
+      </p>
+    </section>
+  );
+}
+
 function ActivityPanels(props: { locale: Locale; events: AuditEvent[] }) {
   const t = copy[props.locale];
   const panels: Array<{ status: AuditEventType; title: string; prefix: string }> = [
@@ -1168,7 +1233,12 @@ function ActivityPanels(props: { locale: Locale; events: AuditEvent[] }) {
     { status: 'settingsChanged', title: props.locale === 'zh' ? '边界已更新' : 'Rules updated', prefix: props.locale === 'zh' ? '已更新：' : 'Updated: ' },
   ];
   const activePanels = panels
-    .map((panel) => ({ ...panel, events: props.events.filter((event) => event.eventType === panel.status) }))
+    .map((panel) => ({
+      ...panel,
+      events: props.events
+        .filter((event) => event.eventType === panel.status)
+        .toSorted((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt)),
+    }))
     .filter((panel) => panel.events.length > 0);
 
   if (activePanels.length === 0) return null;
@@ -1182,7 +1252,8 @@ function ActivityPanels(props: { locale: Locale; events: AuditEvent[] }) {
             <ul className="space-y-2 text-sm text-stone-300">
               {panel.events.map((event) => (
                 <li key={event.id} className="rounded-2xl bg-stone-950/60 p-4">
-                  {panel.prefix}{event.actionTitle}
+                  <p>{panel.prefix}{event.actionTitle}</p>
+                  <p className="mt-1 text-xs text-stone-500">{t.localRecordSaved}</p>
                 </li>
               ))}
             </ul>
@@ -1191,6 +1262,27 @@ function ActivityPanels(props: { locale: Locale; events: AuditEvent[] }) {
       </div>
     </section>
   );
+}
+
+function latestAuditEvent(events: AuditEvent[]) {
+  return events.toSorted((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))[0];
+}
+
+function outcomeMessage(event: AuditEvent, locale: Locale) {
+  const t = copy[locale];
+  const templates: Record<AuditEventType, string> = {
+    confirmed: t.outcomeConfirmed,
+    rejected: t.outcomeRejected,
+    undone: t.outcomeUndone,
+    wrong: t.outcomeWrong,
+    alwaysAsk: t.outcomeAlwaysAsk,
+    slotUsed: t.outcomeSlotUsed,
+    moreOptions: t.outcomeMoreOptions,
+    draftEdited: t.outcomeDraftEdited,
+    settingsChanged: t.outcomeSettingsChanged,
+  };
+
+  return interpolateTitle(templates[event.eventType], event.actionTitle);
 }
 
 function clampHour(value: number) {
@@ -1271,7 +1363,11 @@ function localizedMeeting(suggestion: MeetingSuggestion, locale: Locale): Locali
 }
 
 function interpolate(template: string, count: number) {
-  return template.replace('{count}', String(count));
+  return template.replaceAll('{count}', String(count));
+}
+
+function interpolateTitle(template: string, title: string) {
+  return template.replace('{title}', title);
 }
 
 function formatTimeInZone(value: string, locale: Locale, timeZone: string) {
