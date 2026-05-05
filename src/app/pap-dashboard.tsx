@@ -1,17 +1,52 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
-import { sampleEmails } from '@/lib/pap/fixtures';
+import { useEffect, useMemo, useState } from 'react';
+import { sampleEmails, samplePreferences } from '@/lib/pap/fixtures';
 import { runPapV1Pipeline } from '@/lib/pap/pipeline';
-import type { EmailMessage, MeetingSuggestion, SuggestedAction } from '@/lib/pap/types';
+import type {
+  AutomationPermission,
+  EmailMessage,
+  MeetingSuggestion,
+  SuggestedAction,
+  UserPreferences,
+} from '@/lib/pap/types';
 
 type Locale = 'zh' | 'en';
 type ActionStatus = 'confirmed' | 'rejected' | 'undone' | 'wrong' | 'alwaysAsk' | 'slotUsed' | 'moreOptions';
+type AuditEventType = ActionStatus | 'draftEdited' | 'settingsChanged';
 type ActionResult = {
   id: string;
   title: string;
   status: ActionStatus;
+};
+type AuditEvent = {
+  id: string;
+  actionId: string;
+  actionTitle: string;
+  eventType: AuditEventType;
+  createdAt: string;
+};
+type PersistedDashboardStateV1 = {
+  version: 1;
+  preferences: UserPreferences;
+  actionResults: ActionResult[];
+  auditEvents: AuditEvent[];
+  editedDrafts: Record<string, string>;
+};
+
+type BoundaryChange = {
+  title: string;
+  update: (preferences: UserPreferences) => UserPreferences;
+};
+
+const storageKey = 'pap:v1:dashboard-state';
+const defaultDashboardState: PersistedDashboardStateV1 = {
+  version: 1,
+  preferences: samplePreferences,
+  actionResults: [],
+  auditEvents: [],
+  editedDrafts: {},
 };
 
 type LocalizedAction = {
@@ -329,13 +364,25 @@ const localizedPriorityText: Record<Locale, Record<string, string>> = {
 };
 
 export default function Dashboard() {
-  const briefing = useMemo(() => runPapV1Pipeline(), []);
   const [locale, setLocale] = useState<Locale>('zh');
-  const [results, setResults] = useState<ActionResult[]>([]);
-  const [editedDrafts, setEditedDrafts] = useState<Record<string, string>>({});
+  const [persistedState, setPersistedState] = useState<PersistedDashboardStateV1>(defaultDashboardState);
+  const [hydrated, setHydrated] = useState(false);
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const briefing = useMemo(() => runPapV1Pipeline(persistedState.preferences), [persistedState.preferences]);
   const t = copy[locale];
+  const results = persistedState.actionResults;
+  const editedDrafts = persistedState.editedDrafts;
+
+  useEffect(() => {
+    setPersistedState(readPersistedDashboardState());
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    window.localStorage.setItem(storageKey, JSON.stringify(persistedState));
+  }, [hydrated, persistedState]);
 
   const emailsById = useMemo(
     () => new Map(sampleEmails.map((email) => [email.id, email])),
@@ -348,15 +395,61 @@ export default function Dashboard() {
     (action) => !results.some((result) => result.id === action.id && result.status === 'undone'),
   );
 
+  function appendAuditEvent(actionId: string, title: string, eventType: AuditEventType) {
+    setPersistedState((current) => ({
+      ...current,
+      auditEvents: [
+        ...current.auditEvents,
+        {
+          id: `${Date.now()}_${eventType}_${actionId}`,
+          actionId,
+          actionTitle: title,
+          eventType,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    }));
+  }
+
   function recordResult(title: string, status: ActionStatus, id = `${status}_${title}`) {
-    setResults((current) => [
-      ...current.filter((result) => result.id !== id),
-      { id, title, status },
-    ]);
+    setPersistedState((current) => ({
+      ...current,
+      actionResults: [
+        ...current.actionResults.filter((result) => result.id !== id),
+        { id, title, status },
+      ],
+      auditEvents: [
+        ...current.auditEvents,
+        {
+          id: `${Date.now()}_${status}_${id}`,
+          actionId: id,
+          actionTitle: title,
+          eventType: status,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    }));
   }
 
   function recordActionResult(action: SuggestedAction, status: ActionStatus) {
     recordResult(localizedAction(action, locale).title, status, action.id);
+  }
+
+  function updatePreferences(change: BoundaryChange) {
+    setPersistedState((current) => ({
+      ...current,
+      preferences: change.update(current.preferences),
+      auditEvents: [
+        ...current.auditEvents,
+        {
+          id: `${Date.now()}_settingsChanged_${change.title}`,
+          actionId: 'settings',
+          actionTitle: change.title,
+          eventType: 'settingsChanged',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    }));
   }
 
   function startEdit(action: SuggestedAction) {
@@ -366,7 +459,21 @@ export default function Dashboard() {
   }
 
   function saveEdit(action: SuggestedAction) {
-    setEditedDrafts((current) => ({ ...current, [action.id]: draft }));
+    const title = localizedAction(action, locale).title;
+    setPersistedState((current) => ({
+      ...current,
+      editedDrafts: { ...current.editedDrafts, [action.id]: draft },
+      auditEvents: [
+        ...current.auditEvents,
+        {
+          id: `${Date.now()}_draftEdited_${action.id}`,
+          actionId: action.id,
+          actionTitle: title,
+          eventType: 'draftEdited',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    }));
     setEditingActionId(null);
     setDraft('');
   }
@@ -481,11 +588,15 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <ActivityPanels locale={locale} results={results} />
+      <ActivityPanels locale={locale} events={persistedState.auditEvents} />
 
       <section id="boundaries" className="space-y-6">
         <PageHeader eyebrow={t.boundaries} title={t.boundaries} description={t.boundariesDescription} />
-        <AutomationBoundarySection locale={locale} />
+        <AutomationBoundarySection
+          locale={locale}
+          preferences={persistedState.preferences}
+          onChange={updatePreferences}
+        />
       </section>
     </AppShell>
   );
@@ -790,12 +901,16 @@ function OriginalEmail(props: { email: EmailMessage; locale: Locale }) {
   );
 }
 
-function AutomationBoundarySection(props: { locale: Locale }) {
+function AutomationBoundarySection(props: {
+  locale: Locale;
+  preferences: UserPreferences;
+  onChange: (change: BoundaryChange) => void;
+}) {
   const t = copy[props.locale];
   const sections = [
-    { title: t.canDo, body: t.canDoText, example: t.canDoExample, tone: 'emerald' },
-    { title: t.mustAsk, body: t.mustAskText, example: t.mustAskExample, tone: 'amber' },
-    { title: t.mustNever, body: t.mustNeverText, example: t.mustNeverExample, tone: 'rose' },
+    { title: t.canDo, body: t.canDoText, example: t.canDoExample },
+    { title: t.mustAsk, body: t.mustAskText, example: t.mustAskExample },
+    { title: t.mustNever, body: t.mustNeverText, example: t.mustNeverExample },
   ];
 
   return (
@@ -811,9 +926,9 @@ function AutomationBoundarySection(props: { locale: Locale }) {
   );
 }
 
-function ActivityPanels(props: { locale: Locale; results: ActionResult[] }) {
+function ActivityPanels(props: { locale: Locale; events: AuditEvent[] }) {
   const t = copy[props.locale];
-  const panels: Array<{ status: ActionStatus; title: string; prefix: string }> = [
+  const panels: Array<{ status: AuditEventType; title: string; prefix: string }> = [
     { status: 'confirmed', title: t.confirmedTitle, prefix: t.confirmedPrefix },
     { status: 'rejected', title: t.rejectedTitle, prefix: t.rejectedPrefix },
     { status: 'undone', title: t.undoneTitle, prefix: t.undonePrefix },
@@ -821,10 +936,12 @@ function ActivityPanels(props: { locale: Locale; results: ActionResult[] }) {
     { status: 'alwaysAsk', title: t.alwaysAskTitle, prefix: t.alwaysAskPrefix },
     { status: 'slotUsed', title: t.slotUsedTitle, prefix: t.slotUsedPrefix },
     { status: 'moreOptions', title: t.moreOptionsTitle, prefix: t.moreOptionsPrefix },
+    { status: 'draftEdited', title: props.locale === 'zh' ? '草稿已保存' : 'Draft saved', prefix: props.locale === 'zh' ? '已保存：' : 'Saved: ' },
+    { status: 'settingsChanged', title: props.locale === 'zh' ? '边界已更新' : 'Rules updated', prefix: props.locale === 'zh' ? '已更新：' : 'Updated: ' },
   ];
   const activePanels = panels
-    .map((panel) => ({ ...panel, results: props.results.filter((result) => result.status === panel.status) }))
-    .filter((panel) => panel.results.length > 0);
+    .map((panel) => ({ ...panel, events: props.events.filter((event) => event.eventType === panel.status) }))
+    .filter((panel) => panel.events.length > 0);
 
   if (activePanels.length === 0) return null;
 
@@ -835,9 +952,9 @@ function ActivityPanels(props: { locale: Locale; results: ActionResult[] }) {
         {activePanels.map((panel) => (
           <SectionPanel key={panel.status} title={panel.title} description="">
             <ul className="space-y-2 text-sm text-stone-300">
-              {panel.results.map((result) => (
-                <li key={`${result.status}-${result.id}`} className="rounded-2xl bg-stone-950/60 p-4">
-                  {panel.prefix}{result.title}
+              {panel.events.map((event) => (
+                <li key={event.id} className="rounded-2xl bg-stone-950/60 p-4">
+                  {panel.prefix}{event.actionTitle}
                 </li>
               ))}
             </ul>
@@ -848,13 +965,23 @@ function ActivityPanels(props: { locale: Locale; results: ActionResult[] }) {
   );
 }
 
-function InfoBlock(props: { label: string; children: ReactNode }) {
-  return (
-    <div className="mt-4">
-      <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{props.label}</p>
-      <p className="mt-1 text-sm leading-6 text-stone-300">{props.children}</p>
-    </div>
-  );
+function readPersistedDashboardState(): PersistedDashboardStateV1 {
+  try {
+    const value = window.localStorage.getItem(storageKey);
+    if (!value) return defaultDashboardState;
+    const parsed = JSON.parse(value) as Partial<PersistedDashboardStateV1>;
+    if (parsed.version !== 1) return defaultDashboardState;
+
+    return {
+      version: 1,
+      preferences: parsed.preferences ?? samplePreferences,
+      actionResults: Array.isArray(parsed.actionResults) ? parsed.actionResults : [],
+      auditEvents: Array.isArray(parsed.auditEvents) ? parsed.auditEvents : [],
+      editedDrafts: parsed.editedDrafts ?? {},
+    };
+  } catch {
+    return defaultDashboardState;
+  }
 }
 
 function DetailLine(props: { label: string; children: ReactNode }) {

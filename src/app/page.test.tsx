@@ -1,9 +1,14 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import Home from './page';
 
+const storageKey = 'pap:v1:dashboard-state';
+
 describe('PAP dashboard', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
   it('renders the workbench in Chinese by default and can switch to English', async () => {
     const user = userEvent.setup();
 
@@ -85,5 +90,52 @@ describe('PAP dashboard', () => {
 
     await user.click(meeting.getByRole('button', { name: '使用第一个时间' }));
     expect(screen.getByText('已选择会议时间')).toBeInTheDocument();
+  });
+
+  it('loads persisted action state, edited drafts, and audit history', async () => {
+    window.localStorage.setItem(storageKey, JSON.stringify({
+      version: 1,
+      preferences: {
+        userId: 'user_1',
+        timeZone: 'Europe/Berlin',
+        workHours: { startHour: 9, endHour: 17 },
+        deepWorkHours: [{ startHour: 9, endHour: 11 }],
+        preferredTone: 'concise',
+        automationPermissions: ['archive_marketing', 'summarize_newsletters'],
+        highRiskKeywords: ['contract', 'payment', 'quote', 'legal', 'passport', 'invoice'],
+        contacts: [
+          { email: 'maya@client.example', name: 'Maya Chen', importance: 'important', alwaysConfirm: true, timeZone: 'Asia/Tokyo' },
+          { email: 'alex@studio.example', name: 'Alex Rivera', importance: 'normal', alwaysConfirm: false, timeZone: 'America/New_York' },
+        ],
+      },
+      actionResults: [{ id: 'action_email_2', title: '回复 Maya：先不承诺周五交付', status: 'confirmed' }],
+      auditEvents: [{
+        id: 'event_1',
+        actionId: 'action_email_2',
+        actionTitle: '回复 Maya：先不承诺周五交付',
+        eventType: 'confirmed',
+        createdAt: '2026-05-05T00:00:00.000Z',
+      }],
+      editedDrafts: { action_email_3: '我改过的会议回复。' },
+    }));
+
+    render(<Home />);
+
+    expect(await screen.findByText('已确认')).toBeInTheDocument();
+    expect(screen.getByText('已确认：回复 Maya：先不承诺周五交付')).toBeInTheDocument();
+    expect(screen.queryByText('发送一版谨慎回复：先确认范围，不承诺日期。')).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole('button', { name: '先改一下' })[0]);
+    expect((screen.getAllByLabelText('修改建议内容')[0] as HTMLTextAreaElement).value).toBe('我改过的会议回复。');
+  });
+
+  it('falls back to default state when persisted data is invalid', async () => {
+    window.localStorage.setItem(storageKey, 'not-json');
+
+    render(<Home />);
+
+    expect((await screen.findAllByText('回复 Maya：先不承诺周五交付'))[0]).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '确认执行' })[0]).toBeInTheDocument();
   });
 });

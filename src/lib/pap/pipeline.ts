@@ -2,15 +2,15 @@ import { createDailyBriefing } from './briefing';
 import { sampleCalendarEvents, sampleEmails, samplePreferences } from './fixtures';
 import { createMeetingSuggestions } from './meetings';
 import { createSuggestedAction, triageEmail } from './triage';
-import type { DailyBriefing } from './types';
+import type { DailyBriefing, UserPreferences } from './types';
 
-export function runPapV1Pipeline(): DailyBriefing {
-  const triagedEmails = sampleEmails.map((email) => triageEmail(email, samplePreferences));
-  const actions = triagedEmails.map((triaged) => createSuggestedAction(triaged, samplePreferences));
+export function runPapV1Pipeline(preferences: UserPreferences = samplePreferences): DailyBriefing {
+  const triagedEmails = sampleEmails.map((email) => triageEmail(email, preferences));
+  const actions = triagedEmails.map((triaged) => createSuggestedAction(triaged, preferences));
   const meetingSuggestions = createMeetingSuggestions(
     triagedEmails,
     sampleCalendarEvents,
-    samplePreferences,
+    preferences,
   );
 
   return createDailyBriefing({
