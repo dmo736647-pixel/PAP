@@ -119,7 +119,7 @@ export function createSuggestedAction(
     summary: triaged.email.subject,
     rationale: 'No automatic action matched, so PAP keeps it visible.',
     riskLevel: triaged.risk.level,
-    requiresConfirmation: triaged.needsReply,
+    requiresConfirmation: true,
     canUndo: true,
   };
 }

@@ -140,12 +140,22 @@ const copy = {
     canDo: '自动做',
     mustAsk: '先问我',
     mustNever: '绝不能做',
-    canDoText: '营销邮件归档 · 资讯摘要 · 收据标记',
-    mustAskText: '客户回复 · 会议改期 · 交付承诺 · 新联系人',
-    mustNeverText: '付款 · 签合同 · 法律决定 · 敏感数据',
-    canDoExample: '今天已按这些规则清理 2 件事。',
+    canDoText: '开启后，低风险组织类动作会进入“已自动处理”。',
+    mustAskText: '这些联系人或场景会进入待确认，不会静默执行。',
+    mustNeverText: '命中这些关键词时，PAP 会强制确认。',
+    canDoExample: '关闭营销归档后，营销邮件会回到待处理视图。',
     mustAskExample: 'Maya + 合同时间 = 永远先问你。',
     mustNeverExample: '付款、合同、法律决定直接阻止。',
+    enabled: '已开启',
+    disabled: '已关闭',
+    highRiskKeywords: '高风险关键词',
+    addKeyword: '添加关键词',
+    newKeyword: '新关键词',
+    remove: '移除',
+    workHours: '工作时间',
+    deepWork: '深度工作',
+    startHour: '开始',
+    endHour: '结束',
     activity: '刚刚完成',
     confirmedTitle: '已确认',
     rejectedTitle: '已拒绝',
@@ -230,12 +240,22 @@ const copy = {
     canDo: 'Automatic',
     mustAsk: 'Ask first',
     mustNever: 'Never',
-    canDoText: 'Archive marketing · Summarize newsletters · Label receipts',
-    mustAskText: 'Client replies · Reschedules · Commitments · New contacts',
-    mustNeverText: 'Payments · Contract signing · Legal decisions · Sensitive data',
-    canDoExample: '2 items were cleared by these rules today.',
+    canDoText: 'When enabled, low-risk organization actions move into Automatically Handled.',
+    mustAskText: 'These contacts or scenarios go to Pending Confirmation instead of silent execution.',
+    mustNeverText: 'Matching keywords force confirmation.',
+    canDoExample: 'Turn off marketing archive and marketing email returns to review.',
     mustAskExample: 'Maya + contract timing = always ask you.',
     mustNeverExample: 'Payments, contracts, and legal decisions are blocked.',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    highRiskKeywords: 'High-risk keywords',
+    addKeyword: 'Add keyword',
+    newKeyword: 'New keyword',
+    remove: 'Remove',
+    workHours: 'Work hours',
+    deepWork: 'Deep work',
+    startHour: 'Start',
+    endHour: 'End',
     activity: 'Just done',
     confirmedTitle: 'Confirmed',
     rejectedTitle: 'Rejected',
@@ -907,21 +927,181 @@ function AutomationBoundarySection(props: {
   onChange: (change: BoundaryChange) => void;
 }) {
   const t = copy[props.locale];
-  const sections = [
-    { title: t.canDo, body: t.canDoText, example: t.canDoExample },
-    { title: t.mustAsk, body: t.mustAskText, example: t.mustAskExample },
-    { title: t.mustNever, body: t.mustNeverText, example: t.mustNeverExample },
+  const [keyword, setKeyword] = useState('');
+  const permissionLabels: Array<{ permission: AutomationPermission; label: string }> = [
+    { permission: 'archive_marketing', label: props.locale === 'zh' ? '自动归档营销邮件' : 'Archive marketing' },
+    { permission: 'summarize_newsletters', label: props.locale === 'zh' ? '自动总结资讯邮件' : 'Summarize newsletters' },
+    { permission: 'send_simple_acknowledgement', label: props.locale === 'zh' ? '发送简单确认' : 'Send simple acknowledgements' },
+    { permission: 'accept_whitelisted_low_risk_meetings', label: props.locale === 'zh' ? '接受白名单低风险会议' : 'Accept whitelisted low-risk meetings' },
   ];
+
+  function togglePermission(permission: AutomationPermission, label: string) {
+    props.onChange({
+      title: label,
+      update: (preferences) => {
+        const enabled = preferences.automationPermissions.includes(permission);
+        return {
+          ...preferences,
+          automationPermissions: enabled
+            ? preferences.automationPermissions.filter((candidate) => candidate !== permission)
+            : [...preferences.automationPermissions, permission],
+        };
+      },
+    });
+  }
+
+  function toggleContact(email: string, name: string) {
+    props.onChange({
+      title: props.locale === 'zh' ? `${name} 是否先问我` : `${name} ask first`,
+      update: (preferences) => ({
+        ...preferences,
+        contacts: preferences.contacts.map((contact) => (
+          contact.email === email ? { ...contact, alwaysConfirm: !contact.alwaysConfirm } : contact
+        )),
+      }),
+    });
+  }
+
+  function addKeyword() {
+    const normalized = keyword.trim().toLowerCase();
+    if (!normalized || props.preferences.highRiskKeywords.includes(normalized)) return;
+    props.onChange({
+      title: props.locale === 'zh' ? `添加高风险关键词：${normalized}` : `Add high-risk keyword: ${normalized}`,
+      update: (preferences) => ({
+        ...preferences,
+        highRiskKeywords: [...preferences.highRiskKeywords, normalized],
+      }),
+    });
+    setKeyword('');
+  }
+
+  function removeKeyword(value: string) {
+    props.onChange({
+      title: props.locale === 'zh' ? `移除高风险关键词：${value}` : `Remove high-risk keyword: ${value}`,
+      update: (preferences) => ({
+        ...preferences,
+        highRiskKeywords: preferences.highRiskKeywords.filter((candidate) => candidate !== value),
+      }),
+    });
+  }
+
+  function updateWorkHours(field: 'startHour' | 'endHour', value: number) {
+    const next = clampHour(value);
+    props.onChange({
+      title: props.locale === 'zh' ? '更新工作时间' : 'Update work hours',
+      update: (preferences) => {
+        const workHours = { ...preferences.workHours, [field]: next };
+        if (workHours.startHour >= workHours.endHour) return preferences;
+        return { ...preferences, workHours };
+      },
+    });
+  }
+
+  function updateDeepWork(field: 'startHour' | 'endHour', value: number) {
+    const next = clampHour(value);
+    props.onChange({
+      title: props.locale === 'zh' ? '更新深度工作时间' : 'Update deep work hours',
+      update: (preferences) => {
+        const current = preferences.deepWorkHours[0] ?? { startHour: 9, endHour: 11 };
+        const deepWork = { ...current, [field]: next };
+        if (deepWork.startHour >= deepWork.endHour) return preferences;
+        return { ...preferences, deepWorkHours: [deepWork] };
+      },
+    });
+  }
+
+  const deepWork = props.preferences.deepWorkHours[0] ?? { startHour: 9, endHour: 11 };
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
-      {sections.map((section) => (
-        <article key={section.title} className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
-          <h3 className="text-lg font-semibold text-stone-50">{section.title}</h3>
-          <p className="mt-3 text-sm leading-6 text-stone-300">{section.body}</p>
-          <p className="mt-5 rounded-2xl bg-[#07110f] p-4 text-sm text-emerald-100 ring-1 ring-white/5">{section.example}</p>
-        </article>
-      ))}
+      <article className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
+        <h3 className="text-lg font-semibold text-stone-50">{t.canDo}</h3>
+        <p className="mt-3 text-sm leading-6 text-stone-300">{t.canDoText}</p>
+        <div className="mt-5 space-y-3">
+          {permissionLabels.map((item) => {
+            const enabled = props.preferences.automationPermissions.includes(item.permission);
+            return (
+              <button
+                key={item.permission}
+                className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm ring-1 ring-white/5 ${enabled ? 'bg-emerald-300 text-emerald-950' : 'bg-[#07110f] text-stone-200'}`}
+                onClick={() => togglePermission(item.permission, item.label)}
+              >
+                <span>{item.label}</span>
+                <span className="font-semibold">{enabled ? t.enabled : t.disabled}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-5 rounded-2xl bg-[#07110f] p-4 text-sm text-emerald-100 ring-1 ring-white/5">{t.canDoExample}</p>
+      </article>
+
+      <article className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
+        <h3 className="text-lg font-semibold text-stone-50">{t.mustAsk}</h3>
+        <p className="mt-3 text-sm leading-6 text-stone-300">{t.mustAskText}</p>
+        <div className="mt-5 space-y-3">
+          {props.preferences.contacts.map((contact) => (
+            <button
+              key={contact.email}
+              className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm ring-1 ring-white/5 ${contact.alwaysConfirm ? 'bg-amber-300 text-amber-950' : 'bg-[#07110f] text-stone-200'}`}
+              onClick={() => toggleContact(contact.email, contact.name)}
+            >
+              <span>{contact.name}</span>
+              <span className="font-semibold">{contact.alwaysConfirm ? t.enabled : t.disabled}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-3 rounded-2xl bg-[#07110f] p-4 text-sm text-stone-300 ring-1 ring-white/5">
+          <label>
+            <span className="block text-xs uppercase tracking-[0.16em] text-stone-500">{t.startHour}</span>
+            <input className="mt-2 w-full rounded-xl bg-stone-950 p-2 text-stone-100" type="number" min="0" max="23" value={props.preferences.workHours.startHour} onChange={(event) => updateWorkHours('startHour', Number(event.target.value))} />
+          </label>
+          <label>
+            <span className="block text-xs uppercase tracking-[0.16em] text-stone-500">{t.endHour}</span>
+            <input className="mt-2 w-full rounded-xl bg-stone-950 p-2 text-stone-100" type="number" min="0" max="23" value={props.preferences.workHours.endHour} onChange={(event) => updateWorkHours('endHour', Number(event.target.value))} />
+          </label>
+          <p className="col-span-2 text-emerald-100">{t.workHours}</p>
+          <label>
+            <span className="block text-xs uppercase tracking-[0.16em] text-stone-500">{t.startHour}</span>
+            <input className="mt-2 w-full rounded-xl bg-stone-950 p-2 text-stone-100" type="number" min="0" max="23" value={deepWork.startHour} onChange={(event) => updateDeepWork('startHour', Number(event.target.value))} />
+          </label>
+          <label>
+            <span className="block text-xs uppercase tracking-[0.16em] text-stone-500">{t.endHour}</span>
+            <input className="mt-2 w-full rounded-xl bg-stone-950 p-2 text-stone-100" type="number" min="0" max="23" value={deepWork.endHour} onChange={(event) => updateDeepWork('endHour', Number(event.target.value))} />
+          </label>
+          <p className="col-span-2 text-emerald-100">{t.deepWork}</p>
+        </div>
+      </article>
+
+      <article className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
+        <h3 className="text-lg font-semibold text-stone-50">{t.mustNever}</h3>
+        <p className="mt-3 text-sm leading-6 text-stone-300">{t.mustNeverText}</p>
+        <div className="mt-5 flex gap-2">
+          <input
+            aria-label={t.newKeyword}
+            className="min-w-0 flex-1 rounded-full bg-[#07110f] px-4 py-2 text-sm text-stone-100 ring-1 ring-white/5"
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') addKeyword();
+            }}
+            placeholder={t.newKeyword}
+          />
+          <button className="rounded-full bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950" onClick={addKeyword}>{t.addKeyword}</button>
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          {props.preferences.highRiskKeywords.map((value) => (
+            <button
+              key={value}
+              className="rounded-full bg-rose-950 px-3 py-2 text-sm text-rose-100 ring-1 ring-rose-300/20"
+              onClick={() => removeKeyword(value)}
+              aria-label={`${t.remove} ${value}`}
+            >
+              {value} ×
+            </button>
+          ))}
+        </div>
+        <p className="mt-5 rounded-2xl bg-[#07110f] p-4 text-sm text-emerald-100 ring-1 ring-white/5">{t.mustNeverExample}</p>
+      </article>
     </div>
   );
 }
@@ -963,6 +1143,11 @@ function ActivityPanels(props: { locale: Locale; events: AuditEvent[] }) {
       </div>
     </section>
   );
+}
+
+function clampHour(value: number) {
+  if (Number.isNaN(value)) return 0;
+  return Math.max(0, Math.min(23, value));
 }
 
 function readPersistedDashboardState(): PersistedDashboardStateV1 {

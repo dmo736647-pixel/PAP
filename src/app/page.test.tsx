@@ -138,4 +138,43 @@ describe('PAP dashboard', () => {
     expect((await screen.findAllByText('回复 Maya：先不承诺周五交付'))[0]).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '确认执行' })[0]).toBeInTheDocument();
   });
+
+  it('edits automation permissions and persists the boundary change', async () => {
+    const user = userEvent.setup();
+
+    const { unmount } = render(<Home />);
+
+    expect(screen.getByText('PAP 已替你清掉这些事')).toBeInTheDocument();
+    expect(screen.getByText('归档低价值营销邮件')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /自动归档营销邮件/ }));
+
+    expect(screen.getByText('边界已更新')).toBeInTheDocument();
+    const automatedSection = screen.getByText('PAP 已替你清掉这些事').closest('section');
+    expect(within(automatedSection as HTMLElement).queryByText('归档低价值营销邮件')).not.toBeInTheDocument();
+    expect(screen.getAllByText('归档低价值营销邮件')[0]).toBeInTheDocument();
+
+    unmount();
+    render(<Home />);
+
+    expect(await screen.findByText('边界已更新')).toBeInTheDocument();
+    const restoredAutomatedSection = screen.getByText('PAP 已替你清掉这些事').closest('section');
+    expect(within(restoredAutomatedSection as HTMLElement).queryByText('归档低价值营销邮件')).not.toBeInTheDocument();
+    expect(screen.getAllByText('归档低价值营销邮件')[0]).toBeInTheDocument();
+  });
+
+  it('adds high-risk keywords and toggles always-confirm contacts', async () => {
+    const user = userEvent.setup();
+
+    render(<Home />);
+
+    await user.type(screen.getByLabelText('新关键词'), 'demo');
+    await user.click(screen.getByRole('button', { name: '添加关键词' }));
+    expect(screen.getByRole('button', { name: '移除 demo' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Alex Rivera/ }));
+    expect(screen.getAllByText('给 Alex 发 3 个可选会议时间')[0]).toBeInTheDocument();
+    expect(screen.getByText('边界已更新')).toBeInTheDocument();
+    expect(screen.getByText(/Alex Rivera 是否先问我/)).toBeInTheDocument();
+  });
 });
