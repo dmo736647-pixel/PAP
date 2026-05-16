@@ -181,6 +181,7 @@ const copy = {
     alphaApiLoading: '正在读取 Alpha API',
     alphaApiError: 'Alpha API 暂时不可用',
     alphaPendingCount: 'API 待确认 {count} 个',
+    alphaRecordCount: 'API 记录 {count} 条',
     alphaReadOnly: '只读优先',
     alphaLiveActionsOff: '真实执行未开启',
     alphaSynced: 'Alpha API 已记录',
@@ -327,6 +328,7 @@ const copy = {
     alphaApiLoading: 'Reading Alpha API',
     alphaApiError: 'Alpha API is temporarily unavailable',
     alphaPendingCount: '{count} API pending actions',
+    alphaRecordCount: '{count} API records',
     alphaReadOnly: 'Read-only first',
     alphaLiveActionsOff: 'Live actions disabled',
     alphaSynced: 'Alpha API recorded it',
@@ -516,15 +518,10 @@ export default function Dashboard() {
   useEffect(() => {
     let active = true;
 
-    Promise.all([fetchAlphaReadiness(), fetchAlphaWorkspace()])
-      .then(([readiness, workspace]) => {
-        if (!active) return;
-        setAlphaApiState({ readiness, workspace });
-      })
-      .catch(() => {
-        if (!active) return;
-        setAlphaApiState({ error: 'alpha-api-unavailable' });
-      });
+    loadAlphaApiState((nextState) => {
+      if (!active) return;
+      setAlphaApiState(nextState);
+    });
 
     return () => {
       active = false;
@@ -597,7 +594,8 @@ export default function Dashboard() {
 
     const sync = status === 'confirmed' ? confirmAlphaAction : rejectAlphaAction;
     sync(alphaActionId)
-      .then(() => setAlphaApiState((current) => ({ ...current, lastDecisionSync: 'synced' })))
+      .then(() => fetchAlphaWorkspace())
+      .then((workspace) => setAlphaApiState((current) => ({ ...current, workspace, lastDecisionSync: 'synced' })))
       .catch(() => setAlphaApiState((current) => ({ ...current, lastDecisionSync: 'failed' })));
   }
 
@@ -1409,6 +1407,12 @@ function ActivityPanels(props: { locale: Locale; events: AuditEvent[] }) {
   );
 }
 
+function loadAlphaApiState(apply: (state: AlphaApiState) => void) {
+  Promise.all([fetchAlphaReadiness(), fetchAlphaWorkspace()])
+    .then(([readiness, workspace]) => apply({ readiness, workspace }))
+    .catch(() => apply({ error: 'alpha-api-unavailable' }));
+}
+
 function integrationStatusLabels(status: PapIntegrationStatus, locale: Locale) {
   const t = copy[locale];
 
@@ -1427,9 +1431,13 @@ function alphaApiStatusLabels(state: AlphaApiState, locale: Locale) {
   if (state.error) return [t.alphaApiError];
   if (!state.readiness || !state.workspace) return [t.alphaApiLoading];
 
+  const pendingCount = state.workspace.workspace.actions.filter((action) => action.status === 'pending').length;
+  const auditCount = state.workspace.workspace.auditRecords.length;
+
   return [
     t.alphaApiReady,
-    interpolate(t.alphaPendingCount, state.workspace.workspace.actions.length),
+    interpolate(t.alphaPendingCount, pendingCount),
+    interpolate(t.alphaRecordCount, auditCount),
     state.readiness.readOnlyFirst ? t.alphaReadOnly : '',
     state.readiness.liveActionsEnabled ? '' : t.alphaLiveActionsOff,
     state.lastDecisionSync === 'synced' ? t.alphaSynced : '',

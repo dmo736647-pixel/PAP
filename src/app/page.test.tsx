@@ -31,9 +31,30 @@ describe('PAP dashboard', () => {
         },
         workspace: {
           actions: [
-            { id: 'briefing_2026_05_04:action_email_2', sourceActionId: 'action_email_2' },
-            { id: 'briefing_2026_05_04:action_email_3', sourceActionId: 'action_email_3' },
+            { id: 'briefing_2026_05_04:action_email_2', sourceActionId: 'action_email_2', status: 'pending' },
+            { id: 'briefing_2026_05_04:action_email_3', sourceActionId: 'action_email_3', status: 'pending' },
           ],
+          auditRecords: [],
+        },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ action: { status: 'confirmed' } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        workspace: {
+          actions: [
+            { id: 'briefing_2026_05_04:action_email_2', sourceActionId: 'action_email_2', status: 'confirmed' },
+            { id: 'briefing_2026_05_04:action_email_3', sourceActionId: 'action_email_3', status: 'pending' },
+          ],
+          auditRecords: [{ eventType: 'confirmed' }],
+        },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ action: { status: 'rejected' } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        workspace: {
+          actions: [
+            { id: 'briefing_2026_05_04:action_email_2', sourceActionId: 'action_email_2', status: 'confirmed' },
+            { id: 'briefing_2026_05_04:action_email_3', sourceActionId: 'action_email_3', status: 'rejected' },
+          ],
+          auditRecords: [{ eventType: 'confirmed' }, { eventType: 'rejected' }],
         },
       }), { status: 200 }))
       .mockResolvedValue(new Response(JSON.stringify({ action: { status: 'confirmed' } }), { status: 200 }));
@@ -62,6 +83,7 @@ describe('PAP dashboard', () => {
     expect(screen.getByRole('button', { name: '即将支持 Google 连接' })).toBeDisabled();
     expect(await screen.findByText('Alpha API 已就绪')).toBeInTheDocument();
     expect(screen.getByText('API 待确认 2 个')).toBeInTheDocument();
+    expect(screen.getByText('API 记录 0 条')).toBeInTheDocument();
     expect(screen.getByText('只读优先')).toBeInTheDocument();
     expect(screen.getByText('真实执行未开启')).toBeInTheDocument();
 
@@ -111,6 +133,8 @@ describe('PAP dashboard', () => {
     await user.click(pending.getAllByRole('button', { name: '确认执行' })[0]);
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/alpha/actions/briefing_2026_05_04%3Aaction_email_2/confirm', { method: 'POST' });
     expect(await screen.findByText('Alpha API 已记录')).toBeInTheDocument();
+    expect(screen.getByText('API 待确认 1 个')).toBeInTheDocument();
+    expect(screen.getByText('API 记录 1 条')).toBeInTheDocument();
     expect(screen.getByText('PAP 刚刚完成并留痕')).toBeInTheDocument();
     expect(screen.getByText(/待确认列表已更新/)).toBeInTheDocument();
     expect(screen.getByText('本轮已完成 1 个动作 · 已留下 1 条记录')).toBeInTheDocument();
@@ -119,6 +143,8 @@ describe('PAP dashboard', () => {
 
     await user.click(screen.getAllByRole('button', { name: '不要这样做' })[0]);
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/alpha/actions/briefing_2026_05_04%3Aaction_email_3/reject', { method: 'POST' });
+    expect(await screen.findByText('API 待确认 0 个')).toBeInTheDocument();
+    expect(screen.getByText('API 记录 2 条')).toBeInTheDocument();
     expect(screen.getByText('已拒绝')).toBeInTheDocument();
     expect(screen.getAllByText(/已拒绝：/)[0]).toBeInTheDocument();
     expect(within(pendingSection as HTMLElement).getByText('今天的确认已清空')).toBeInTheDocument();
