@@ -70,6 +70,11 @@ describe('PAP dashboard', () => {
     await user.click(screen.getAllByRole('button', { name: '不要这样做' })[0]);
     expect(screen.getByText('已拒绝')).toBeInTheDocument();
     expect(screen.getAllByText(/已拒绝：/)[0]).toBeInTheDocument();
+    expect(within(pendingSection as HTMLElement).getByText('今天的确认已清空')).toBeInTheDocument();
+    expect(within(pendingSection as HTMLElement).getByText('发送、承诺和改日历仍会先停在这里。')).toBeInTheDocument();
+    expect(screen.getByText('今天的决策已清空')).toBeInTheDocument();
+    expect(screen.getAllByText('PAP 会继续监控，新事项会再提醒你。')[0]).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '去确认' })).not.toBeInTheDocument();
   });
 
   it('edits a pending action and can undo or correct an automatic action', async () => {

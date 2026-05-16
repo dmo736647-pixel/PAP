@@ -94,7 +94,9 @@ const copy = {
     boundaryNeverTitle: '这些永远不能做',
     todayBriefing: '今日简报',
     todayHeading: '今天有 {count} 件事需要你决定',
+    todayClearedHeading: '今天的决策已清空',
     todaySubheading: 'PAP 已清掉低价值事项，把真正需要判断的动作放在前面。',
+    todayClearedNote: 'PAP 会继续监控，新事项会再提醒你。',
     pendingMetric: '等你决定',
     handledMetric: '已替你清理',
     meetingMetric: '可安排会议',
@@ -109,6 +111,8 @@ const copy = {
     pendingDescription: 'PAP 已写好草稿；你只需要确认、修改或拒绝。',
     pendingQueueSummary: '先处理 {count} 个确认',
     pendingQueueTrust: '发送、承诺和改日历前都会停在这里。',
+    pendingQueueCleared: '今天的确认已清空',
+    pendingQueueClearedTrust: '发送、承诺和改日历仍会先停在这里。',
     recommendation: '建议动作',
     why: '为什么',
     riskNote: '风险',
@@ -220,7 +224,9 @@ const copy = {
     boundaryNeverTitle: 'PAP must never do these',
     todayBriefing: 'Today Briefing',
     todayHeading: '{count} things need your decision today',
+    todayClearedHeading: "Today's decisions are cleared",
     todaySubheading: 'PAP cleared low-value work and brought the real decisions forward.',
+    todayClearedNote: 'PAP keeps monitoring and will surface new decisions.',
     pendingMetric: 'Need you',
     handledMetric: 'Cleared for you',
     meetingMetric: 'Ready meetings',
@@ -235,6 +241,8 @@ const copy = {
     pendingDescription: 'PAP has prepared the drafts; you only confirm, edit, or reject.',
     pendingQueueSummary: 'Resolve {count} confirmations first',
     pendingQueueTrust: 'Sends, commitments, and calendar changes stop here first.',
+    pendingQueueCleared: "Today's confirmations are cleared",
+    pendingQueueClearedTrust: 'Sends, commitments, and calendar changes will still stop here.',
     recommendation: 'Suggested action',
     why: 'Why',
     riskNote: 'Risk',
@@ -568,13 +576,21 @@ export default function Dashboard() {
         <PageHeader eyebrow={t.pending} title={t.pendingHeading} description={t.pendingDescription} />
         <div className="grid gap-3 rounded-3xl border border-emerald-300/15 bg-stone-950/50 p-4 text-sm text-stone-300 md:grid-cols-[1fr_auto] md:items-center">
           <div>
-            <p className="text-2xl font-semibold text-emerald-100">{interpolate(t.pendingQueueSummary, pendingActions.length)}</p>
-            <p className="mt-1 text-stone-400">{t.pendingQueueTrust}</p>
+            <p className="text-2xl font-semibold text-emerald-100">
+              {pendingActions.length > 0 ? interpolate(t.pendingQueueSummary, pendingActions.length) : t.pendingQueueCleared}
+            </p>
+            <p className="mt-1 text-stone-400">
+              {pendingActions.length > 0 ? t.pendingQueueTrust : t.pendingQueueClearedTrust}
+            </p>
           </div>
           <p className="rounded-full bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950">{t.neverSend}</p>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          {pendingActions.map((action) => (
+          {pendingActions.length === 0 ? (
+            <p className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 text-sm font-medium text-emerald-100 shadow-lg shadow-black/20 lg:col-span-2">
+              {t.todayClearedNote}
+            </p>
+          ) : pendingActions.map((action) => (
             <PendingConfirmationCard
               key={action.id}
               action={action}
@@ -598,26 +614,34 @@ export default function Dashboard() {
       <section id="today" className="space-y-6">
         <PageHeader
           eyebrow={t.todayBriefing}
-          title={interpolate(t.todayHeading, pendingActions.length)}
-          description={t.todaySubheading}
+          title={pendingActions.length > 0 ? interpolate(t.todayHeading, pendingActions.length) : t.todayClearedHeading}
+          description={pendingActions.length > 0 ? t.todaySubheading : t.todayClearedNote}
         />
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <SectionPanel title={t.pendingPreview} description={t.neverSend} priority>
             <div className="space-y-4">
               <p className="text-5xl font-semibold text-emerald-200">{pendingActions.length}</p>
-              <ol className="space-y-3">
-                {pendingActions.slice(0, 2).map((action, index) => (
-                  <li key={action.id} className="flex gap-3 rounded-2xl bg-stone-950/60 p-4 text-stone-100 ring-1 ring-white/5">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-300 text-sm font-semibold text-emerald-950">
-                      {index + 1}
-                    </span>
-                    <span>{localizedAction(action, locale).title}</span>
-                  </li>
-                ))}
-              </ol>
-              <a className="inline-flex rounded-full bg-emerald-300 px-5 py-2.5 text-sm font-semibold text-emerald-950" href="#pending">
-                {t.previewCta}
-              </a>
+              {pendingActions.length > 0 ? (
+                <>
+                  <ol className="space-y-3">
+                    {pendingActions.slice(0, 2).map((action, index) => (
+                      <li key={action.id} className="flex gap-3 rounded-2xl bg-stone-950/60 p-4 text-stone-100 ring-1 ring-white/5">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-300 text-sm font-semibold text-emerald-950">
+                          {index + 1}
+                        </span>
+                        <span>{localizedAction(action, locale).title}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <a className="inline-flex rounded-full bg-emerald-300 px-5 py-2.5 text-sm font-semibold text-emerald-950" href="#pending">
+                    {t.previewCta}
+                  </a>
+                </>
+              ) : (
+                <p className="rounded-2xl bg-stone-950/60 p-4 text-sm font-medium text-emerald-100 ring-1 ring-white/5">
+                  {t.todayClearedNote}
+                </p>
+              )}
             </div>
           </SectionPanel>
           <div className="space-y-4">
