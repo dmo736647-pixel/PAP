@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { fetchAlphaReadiness, fetchAlphaWorkspace, type AlphaReadinessResponse, type AlphaWorkspaceResponse } from '@/lib/pap/alpha-client';
+import { confirmAlphaAction, fetchAlphaReadiness, fetchAlphaWorkspace, rejectAlphaAction, type AlphaReadinessResponse, type AlphaWorkspaceResponse } from '@/lib/pap/alpha-client';
 import { sampleEmails, samplePreferences } from '@/lib/pap/fixtures';
 import { runPapV1Pipeline } from '@/lib/pap/pipeline';
 import type {
@@ -45,6 +45,7 @@ type BoundaryChange = {
 type AlphaApiState = {
   readiness?: AlphaReadinessResponse;
   workspace?: AlphaWorkspaceResponse;
+  lastDecisionSync?: 'synced' | 'failed';
   error?: string;
 };
 
@@ -182,6 +183,8 @@ const copy = {
     alphaPendingCount: 'API 待确认 {count} 个',
     alphaReadOnly: '只读优先',
     alphaLiveActionsOff: '真实执行未开启',
+    alphaSynced: 'Alpha API 已记录',
+    alphaSyncFailed: '本地已处理，Alpha API 暂未同步',
     canDo: '自动做',
     mustAsk: '先问我',
     mustNever: '绝不能做',
@@ -326,6 +329,8 @@ const copy = {
     alphaPendingCount: '{count} API pending actions',
     alphaReadOnly: 'Read-only first',
     alphaLiveActionsOff: 'Live actions disabled',
+    alphaSynced: 'Alpha API recorded it',
+    alphaSyncFailed: 'Handled locally; Alpha API not synced yet',
     canDo: 'Automatic',
     mustAsk: 'Ask first',
     mustNever: 'Never',
@@ -580,6 +585,27 @@ export default function Dashboard() {
     recordResult(localizedAction(action, locale).title, status, action.id);
   }
 
+  function syncAlphaActionDecision(action: SuggestedAction, status: 'confirmed' | 'rejected') {
+    const alphaActionId = alphaApiState.workspace?.workspace.actions.find(
+      (candidate) => candidate.sourceActionId === action.id,
+    )?.id;
+
+    if (!alphaActionId) {
+      setAlphaApiState((current) => ({ ...current, lastDecisionSync: 'failed' }));
+      return;
+    }
+
+    const sync = status === 'confirmed' ? confirmAlphaAction : rejectAlphaAction;
+    sync(alphaActionId)
+      .then(() => setAlphaApiState((current) => ({ ...current, lastDecisionSync: 'synced' })))
+      .catch(() => setAlphaApiState((current) => ({ ...current, lastDecisionSync: 'failed' })));
+  }
+
+  function handlePendingDecision(action: SuggestedAction, status: 'confirmed' | 'rejected') {
+    recordActionResult(action, status);
+    syncAlphaActionDecision(action, status);
+  }
+
   function updatePreferences(change: BoundaryChange) {
     setPersistedState((current) => ({
       ...current,
@@ -662,8 +688,8 @@ export default function Dashboard() {
               editing={editingActionId === action.id}
               draft={draft}
               onDraftChange={setDraft}
-              onConfirm={() => recordActionResult(action, 'confirmed')}
-              onReject={() => recordActionResult(action, 'rejected')}
+              onConfirm={() => handlePendingDecision(action, 'confirmed')}
+              onReject={() => handlePendingDecision(action, 'rejected')}
               onEdit={() => startEdit(action)}
               onSave={() => saveEdit(action)}
               onCancel={() => setEditingActionId(null)}
@@ -1406,6 +1432,8 @@ function alphaApiStatusLabels(state: AlphaApiState, locale: Locale) {
     interpolate(t.alphaPendingCount, state.workspace.workspace.actions.length),
     state.readiness.readOnlyFirst ? t.alphaReadOnly : '',
     state.readiness.liveActionsEnabled ? '' : t.alphaLiveActionsOff,
+    state.lastDecisionSync === 'synced' ? t.alphaSynced : '',
+    state.lastDecisionSync === 'failed' ? t.alphaSyncFailed : '',
   ].filter(Boolean);
 }
 

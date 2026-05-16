@@ -30,9 +30,13 @@ describe('PAP dashboard', () => {
           automationMode: 'confirmation_only',
         },
         workspace: {
-          actions: [{ id: 'action_1' }, { id: 'action_2' }],
+          actions: [
+            { id: 'briefing_2026_05_04:action_email_2', sourceActionId: 'action_email_2' },
+            { id: 'briefing_2026_05_04:action_email_3', sourceActionId: 'action_email_3' },
+          ],
         },
-      }), { status: 200 }));
+      }), { status: 200 }))
+      .mockResolvedValue(new Response(JSON.stringify({ action: { status: 'confirmed' } }), { status: 200 }));
   });
   it('renders the workbench in Chinese by default and can switch to English', async () => {
     const user = userEvent.setup();
@@ -102,7 +106,11 @@ describe('PAP dashboard', () => {
     expect(pending.getByText('合同 + 交付时间 = 必须确认。')).toBeInTheDocument();
     expect(pending.getByText('合同永远先问我')).toBeInTheDocument();
 
+    await screen.findByText('Alpha API 已就绪');
+
     await user.click(pending.getAllByRole('button', { name: '确认执行' })[0]);
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/alpha/actions/briefing_2026_05_04%3Aaction_email_2/confirm', { method: 'POST' });
+    expect(await screen.findByText('Alpha API 已记录')).toBeInTheDocument();
     expect(screen.getByText('PAP 刚刚完成并留痕')).toBeInTheDocument();
     expect(screen.getByText(/待确认列表已更新/)).toBeInTheDocument();
     expect(screen.getByText('本轮已完成 1 个动作 · 已留下 1 条记录')).toBeInTheDocument();
@@ -110,6 +118,7 @@ describe('PAP dashboard', () => {
     expect(screen.getAllByText(/已确认：/)[0]).toBeInTheDocument();
 
     await user.click(screen.getAllByRole('button', { name: '不要这样做' })[0]);
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/alpha/actions/briefing_2026_05_04%3Aaction_email_3/reject', { method: 'POST' });
     expect(screen.getByText('已拒绝')).toBeInTheDocument();
     expect(screen.getAllByText(/已拒绝：/)[0]).toBeInTheDocument();
     expect(within(pendingSection as HTMLElement).getByText('今天的确认已清空')).toBeInTheDocument();
