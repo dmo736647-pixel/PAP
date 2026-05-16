@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import { fetchAlphaReadiness, fetchAlphaWorkspace, type AlphaReadinessResponse, type AlphaWorkspaceResponse } from '@/lib/pap/alpha-client';
 import { sampleEmails, samplePreferences } from '@/lib/pap/fixtures';
 import { runPapV1Pipeline } from '@/lib/pap/pipeline';
 import type {
@@ -39,6 +40,12 @@ type PersistedDashboardStateV1 = {
 type BoundaryChange = {
   title: string;
   update: (preferences: UserPreferences) => UserPreferences;
+};
+
+type AlphaApiState = {
+  readiness?: AlphaReadinessResponse;
+  workspace?: AlphaWorkspaceResponse;
+  error?: string;
 };
 
 const storageKey = 'pap:v1:dashboard-state';
@@ -169,6 +176,12 @@ const copy = {
     googleConnectionHeading: 'Private alpha 会先做只读连接',
     googleConnectionDescription: '下一阶段会连接 Gmail 和 Google Calendar，用真实邮件和日历生成 briefing；发送邮件、修改日历仍会先停在确认队列。',
     googleConnectionButton: '即将支持 Google 连接',
+    alphaApiReady: 'Alpha API 已就绪',
+    alphaApiLoading: '正在读取 Alpha API',
+    alphaApiError: 'Alpha API 暂时不可用',
+    alphaPendingCount: 'API 待确认 {count} 个',
+    alphaReadOnly: '只读优先',
+    alphaLiveActionsOff: '真实执行未开启',
     canDo: '自动做',
     mustAsk: '先问我',
     mustNever: '绝不能做',
@@ -307,6 +320,12 @@ const copy = {
     googleConnectionHeading: 'Private alpha starts read-only',
     googleConnectionDescription: 'Next, PAP will connect Gmail and Google Calendar to generate briefings from real email and calendar data; sending email or changing calendars will still stop in the confirmation queue.',
     googleConnectionButton: 'Google connection coming soon',
+    alphaApiReady: 'Alpha API ready',
+    alphaApiLoading: 'Reading Alpha API',
+    alphaApiError: 'Alpha API is temporarily unavailable',
+    alphaPendingCount: '{count} API pending actions',
+    alphaReadOnly: 'Read-only first',
+    alphaLiveActionsOff: 'Live actions disabled',
     canDo: 'Automatic',
     mustAsk: 'Ask first',
     mustNever: 'Never',
@@ -473,6 +492,7 @@ export default function Dashboard() {
   const [hydrated, setHydrated] = useState(false);
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const [alphaApiState, setAlphaApiState] = useState<AlphaApiState>({});
   const briefing = useMemo(() => runPapV1Pipeline(persistedState.preferences), [persistedState.preferences]);
   const t = copy[locale];
   const results = persistedState.actionResults;
@@ -487,6 +507,24 @@ export default function Dashboard() {
     if (!hydrated) return;
     window.localStorage.setItem(storageKey, JSON.stringify(persistedState));
   }, [hydrated, persistedState]);
+
+  useEffect(() => {
+    let active = true;
+
+    Promise.all([fetchAlphaReadiness(), fetchAlphaWorkspace()])
+      .then(([readiness, workspace]) => {
+        if (!active) return;
+        setAlphaApiState({ readiness, workspace });
+      })
+      .catch(() => {
+        if (!active) return;
+        setAlphaApiState({ error: 'alpha-api-unavailable' });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const emailsById = useMemo(
     () => new Map(sampleEmails.map((email) => [email.id, email])),
@@ -705,7 +743,7 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <ConnectionReadinessPanel locale={locale} />
+      <ConnectionReadinessPanel locale={locale} alphaApiState={alphaApiState} />
 
       <section id="automated" className="space-y-6">
         <PageHeader eyebrow={t.handled} title={t.handledHeading} description={t.handledDescription} />
@@ -1254,9 +1292,10 @@ function AutomationBoundarySection(props: {
   );
 }
 
-function ConnectionReadinessPanel(props: { locale: Locale }) {
+function ConnectionReadinessPanel(props: { locale: Locale; alphaApiState: AlphaApiState }) {
   const t = copy[props.locale];
   const integrationLabels = integrationStatusLabels(demoIntegrationStatus, props.locale);
+  const alphaApiLabels = alphaApiStatusLabels(props.alphaApiState, props.locale);
 
   return (
     <section className="space-y-4">
@@ -1264,6 +1303,11 @@ function ConnectionReadinessPanel(props: { locale: Locale }) {
       <div className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
         <div className="flex flex-wrap gap-2">
           {integrationLabels.map((label) => (
+            <Chip key={label}>{label}</Chip>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {alphaApiLabels.map((label) => (
             <Chip key={label}>{label}</Chip>
           ))}
         </div>
@@ -1349,6 +1393,20 @@ function integrationStatusLabels(status: PapIntegrationStatus, locale: Locale) {
     status.storage === 'browser_local' ? t.browserOnly : 'Server storage',
     status.automationMode === 'confirmation_only' ? t.safeMode : 'Live actions',
   ];
+}
+
+function alphaApiStatusLabels(state: AlphaApiState, locale: Locale) {
+  const t = copy[locale];
+
+  if (state.error) return [t.alphaApiError];
+  if (!state.readiness || !state.workspace) return [t.alphaApiLoading];
+
+  return [
+    t.alphaApiReady,
+    interpolate(t.alphaPendingCount, state.workspace.workspace.actions.length),
+    state.readiness.readOnlyFirst ? t.alphaReadOnly : '',
+    state.readiness.liveActionsEnabled ? '' : t.alphaLiveActionsOff,
+  ].filter(Boolean);
 }
 
 function latestAuditEvent(events: AuditEvent[]) {

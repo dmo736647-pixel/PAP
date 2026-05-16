@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Home from './page';
 
 const storageKey = 'pap:v1:dashboard-state';
@@ -8,6 +8,31 @@ const storageKey = 'pap:v1:dashboard-state';
 describe('PAP dashboard', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: {
+          source: 'demo_data',
+          gmail: 'not_connected',
+          calendar: 'not_connected',
+          storage: 'browser_local',
+          automationMode: 'confirmation_only',
+        },
+        readOnlyFirst: true,
+        liveActionsEnabled: false,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        integrationStatus: {
+          source: 'demo_data',
+          gmail: 'not_connected',
+          calendar: 'not_connected',
+          storage: 'browser_local',
+          automationMode: 'confirmation_only',
+        },
+        workspace: {
+          actions: [{ id: 'action_1' }, { id: 'action_2' }],
+        },
+      }), { status: 200 }));
   });
   it('renders the workbench in Chinese by default and can switch to English', async () => {
     const user = userEvent.setup();
@@ -31,6 +56,10 @@ describe('PAP dashboard', () => {
     expect(screen.getAllByText('确认后才执行')[0]).toBeInTheDocument();
     expect(screen.getByText('Private alpha 会先做只读连接')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '即将支持 Google 连接' })).toBeDisabled();
+    expect(await screen.findByText('Alpha API 已就绪')).toBeInTheDocument();
+    expect(screen.getByText('API 待确认 2 个')).toBeInTheDocument();
+    expect(screen.getByText('只读优先')).toBeInTheDocument();
+    expect(screen.getByText('真实执行未开启')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'English' }));
 
@@ -48,6 +77,7 @@ describe('PAP dashboard', () => {
     expect(screen.getAllByText('Browser-local storage')[0]).toBeInTheDocument();
     expect(screen.getAllByText('Runs after confirmation')[0]).toBeInTheDocument();
     expect(screen.getByText('Private alpha starts read-only')).toBeInTheDocument();
+    expect(screen.getByText('Alpha API ready')).toBeInTheDocument();
   });
 
   it('shows pending confirmation hierarchy and preserves confirm/reject flows', async () => {
