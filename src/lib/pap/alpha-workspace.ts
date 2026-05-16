@@ -37,7 +37,9 @@ const connectedAccounts: AlphaConnectedAccount[] = [
   },
 ];
 
-export function createAlphaWorkspaceSnapshot(): AlphaWorkspaceSnapshot {
+let alphaWorkspaceStore: AlphaWorkspaceSnapshot | undefined;
+
+function createInitialAlphaWorkspaceSnapshot(): AlphaWorkspaceSnapshot {
   const briefing = runPapV1Pipeline();
   const briefingRecord: AlphaBriefingRecord = {
     id: 'briefing_2026_05_04',
@@ -61,12 +63,26 @@ export function createAlphaWorkspaceSnapshot(): AlphaWorkspaceSnapshot {
   };
 }
 
+export function resetAlphaWorkspaceStore() {
+  alphaWorkspaceStore = createInitialAlphaWorkspaceSnapshot();
+  return alphaWorkspaceStore;
+}
+
+export function getAlphaWorkspaceSnapshot(): AlphaWorkspaceSnapshot {
+  alphaWorkspaceStore ??= createInitialAlphaWorkspaceSnapshot();
+  return alphaWorkspaceStore;
+}
+
+export function createAlphaWorkspaceSnapshot(): AlphaWorkspaceSnapshot {
+  return getAlphaWorkspaceSnapshot();
+}
+
 export function createAlphaActionDecision(params: {
   actionId: string;
   decision: 'confirmed' | 'rejected';
   createdAt?: string;
 }) {
-  const workspace = createAlphaWorkspaceSnapshot();
+  const workspace = getAlphaWorkspaceSnapshot();
   const action = workspace.actions.find((candidate) => candidate.id === params.actionId);
 
   if (!action) return null;
@@ -80,6 +96,14 @@ export function createAlphaActionDecision(params: {
     title: action.title,
     createdAt,
   });
+
+  alphaWorkspaceStore = {
+    ...workspace,
+    actions: workspace.actions.map((candidate) => (
+      candidate.id === params.actionId ? updatedAction : candidate
+    )),
+    auditRecords: [...workspace.auditRecords, auditRecord],
+  };
 
   return { action: updatedAction, auditRecord };
 }

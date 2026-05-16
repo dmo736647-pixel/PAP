@@ -1,9 +1,18 @@
-import { describe, expect, it } from 'vitest';
-import { alphaIntegrationStatus, createAlphaActionDecision, createAlphaWorkspaceSnapshot } from '../alpha-workspace';
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  alphaIntegrationStatus,
+  createAlphaActionDecision,
+  getAlphaWorkspaceSnapshot,
+  resetAlphaWorkspaceStore,
+} from '../alpha-workspace';
 
 describe('alpha workspace', () => {
+  beforeEach(() => {
+    resetAlphaWorkspaceStore();
+  });
+
   it('creates a private alpha workspace from the demo pipeline', () => {
-    const workspace = createAlphaWorkspaceSnapshot();
+    const workspace = getAlphaWorkspaceSnapshot();
 
     expect(alphaIntegrationStatus).toMatchObject({
       source: 'demo_data',
@@ -23,17 +32,26 @@ describe('alpha workspace', () => {
     expect(workspace.actions.every((action) => action.status === 'pending')).toBe(true);
   });
 
-  it('creates confirm and reject decisions with audit records', () => {
-    const actionId = createAlphaWorkspaceSnapshot().actions[0].id;
+  it('persists action decisions and audit records in the memory store', () => {
+    const actionId = getAlphaWorkspaceSnapshot().actions[0].id;
 
     expect(createAlphaActionDecision({ actionId, decision: 'confirmed' })).toMatchObject({
       action: { id: actionId, status: 'confirmed' },
       auditRecord: { actionId, eventType: 'confirmed' },
     });
+
+    const workspaceAfterConfirm = getAlphaWorkspaceSnapshot();
+    expect(workspaceAfterConfirm.actions.find((action) => action.id === actionId)?.status).toBe('confirmed');
+    expect(workspaceAfterConfirm.auditRecords).toHaveLength(1);
+
     expect(createAlphaActionDecision({ actionId, decision: 'rejected' })).toMatchObject({
       action: { id: actionId, status: 'rejected' },
       auditRecord: { actionId, eventType: 'rejected' },
     });
+
+    const workspaceAfterReject = getAlphaWorkspaceSnapshot();
+    expect(workspaceAfterReject.actions.find((action) => action.id === actionId)?.status).toBe('rejected');
+    expect(workspaceAfterReject.auditRecords.map((record) => record.eventType)).toEqual(['confirmed', 'rejected']);
   });
 
   it('returns null for unknown action decisions', () => {
