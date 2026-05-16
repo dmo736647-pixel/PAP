@@ -3,8 +3,10 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { confirmAlphaAction, fetchAlphaReadiness, fetchAlphaWorkspace, rejectAlphaAction, type AlphaReadinessResponse, type AlphaWorkspaceResponse } from '@/lib/pap/alpha-client';
+import type { ActionResult, ActionStatus, AuditEvent, AuditEventType } from '@/lib/pap/dashboard-state';
 import { sampleEmails, samplePreferences } from '@/lib/pap/fixtures';
 import { runPapV1Pipeline } from '@/lib/pap/pipeline';
+import { createPapWorkspaceViewModel } from '@/lib/pap/workspace-view-model';
 import type {
   AutomationPermission,
   EmailMessage,
@@ -15,20 +17,6 @@ import type {
 } from '@/lib/pap/types';
 
 type Locale = 'zh' | 'en';
-type ActionStatus = 'confirmed' | 'rejected' | 'undone' | 'wrong' | 'alwaysAsk' | 'slotUsed' | 'moreOptions';
-type AuditEventType = ActionStatus | 'draftEdited' | 'settingsChanged';
-type ActionResult = {
-  id: string;
-  title: string;
-  status: ActionStatus;
-};
-type AuditEvent = {
-  id: string;
-  actionId: string;
-  actionTitle: string;
-  eventType: AuditEventType;
-  createdAt: string;
-};
 type PersistedDashboardStateV1 = {
   version: 1;
   preferences: UserPreferences;
@@ -541,6 +529,14 @@ export default function Dashboard() {
   const meetingSuggestions = briefing.meetingSuggestions.filter(
     (suggestion) => !results.some((result) => result.id === `${suggestion.emailId}_slot`),
   );
+  const workspaceView = createPapWorkspaceViewModel({
+    briefing,
+    actionResults: results,
+    auditEvents: persistedState.auditEvents,
+    alphaWorkspace: alphaApiState.workspace,
+    alphaError: alphaApiState.error,
+    lastDecisionSync: alphaApiState.lastDecisionSync,
+  });
 
   function appendAuditEvent(actionId: string, title: string, eventType: AuditEventType) {
     setPersistedState((current) => ({
@@ -767,7 +763,7 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <ConnectionReadinessPanel locale={locale} alphaApiState={alphaApiState} />
+      <ConnectionReadinessPanel locale={locale} workspaceView={workspaceView} />
 
       <section id="automated" className="space-y-6">
         <PageHeader eyebrow={t.handled} title={t.handledHeading} description={t.handledDescription} />
@@ -1316,10 +1312,10 @@ function AutomationBoundarySection(props: {
   );
 }
 
-function ConnectionReadinessPanel(props: { locale: Locale; alphaApiState: AlphaApiState }) {
+function ConnectionReadinessPanel(props: { locale: Locale; workspaceView: ReturnType<typeof createPapWorkspaceViewModel> }) {
   const t = copy[props.locale];
   const integrationLabels = integrationStatusLabels(demoIntegrationStatus, props.locale);
-  const alphaApiLabels = alphaApiStatusLabels(props.alphaApiState, props.locale);
+  const alphaApiLabels = alphaApiStatusLabels(props.workspaceView, props.locale);
 
   return (
     <section className="space-y-4">
@@ -1425,23 +1421,20 @@ function integrationStatusLabels(status: PapIntegrationStatus, locale: Locale) {
   ];
 }
 
-function alphaApiStatusLabels(state: AlphaApiState, locale: Locale) {
+function alphaApiStatusLabels(view: ReturnType<typeof createPapWorkspaceViewModel>, locale: Locale) {
   const t = copy[locale];
 
-  if (state.error) return [t.alphaApiError];
-  if (!state.readiness || !state.workspace) return [t.alphaApiLoading];
-
-  const pendingCount = state.workspace.workspace.actions.filter((action) => action.status === 'pending').length;
-  const auditCount = state.workspace.workspace.auditRecords.length;
+  if (view.alpha.syncState === 'failed') return [t.alphaApiError];
+  if (view.alpha.syncState === 'loading') return [t.alphaApiLoading];
 
   return [
     t.alphaApiReady,
-    interpolate(t.alphaPendingCount, pendingCount),
-    interpolate(t.alphaRecordCount, auditCount),
-    state.readiness.readOnlyFirst ? t.alphaReadOnly : '',
-    state.readiness.liveActionsEnabled ? '' : t.alphaLiveActionsOff,
-    state.lastDecisionSync === 'synced' ? t.alphaSynced : '',
-    state.lastDecisionSync === 'failed' ? t.alphaSyncFailed : '',
+    interpolate(t.alphaPendingCount, view.alpha.pendingCount),
+    interpolate(t.alphaRecordCount, view.alpha.auditCount),
+    t.alphaReadOnly,
+    t.alphaLiveActionsOff,
+    view.alpha.lastDecisionSync === 'synced' ? t.alphaSynced : '',
+    view.alpha.lastDecisionSync === 'failed' ? t.alphaSyncFailed : '',
   ].filter(Boolean);
 }
 
