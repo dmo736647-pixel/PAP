@@ -8,6 +8,7 @@ import type {
   AutomationPermission,
   EmailMessage,
   MeetingSuggestion,
+  PapIntegrationStatus,
   SuggestedAction,
   UserPreferences,
 } from '@/lib/pap/types';
@@ -41,6 +42,13 @@ type BoundaryChange = {
 };
 
 const storageKey = 'pap:v1:dashboard-state';
+const demoIntegrationStatus: PapIntegrationStatus = {
+  source: 'demo_data',
+  gmail: 'not_connected',
+  calendar: 'not_connected',
+  storage: 'browser_local',
+  automationMode: 'confirmation_only',
+};
 const defaultDashboardState: PersistedDashboardStateV1 = {
   version: 1,
   preferences: samplePreferences,
@@ -80,7 +88,11 @@ const copy = {
     navMeetings: '会议',
     navBoundaries: '边界',
     demoWorkspace: '演示工作区',
-    synced: '12 分钟前已同步',
+    dataSource: '演示数据',
+    gmailNotConnected: 'Gmail 未连接',
+    calendarNotConnected: 'Calendar 未连接',
+    browserOnly: '浏览器本地保存',
+    safeMode: '确认后才执行',
     processed: '42 封邮件，只有 4 件需要你看',
     language: '语言',
     resetDemo: '重置演示数据',
@@ -153,6 +165,10 @@ const copy = {
     moreTimes: '换一批时间',
     boundaries: '自动化边界',
     boundariesDescription: '一句话看懂 PAP 能做、必须问、绝不能做什么。',
+    googleConnection: 'Google 连接',
+    googleConnectionHeading: 'Private alpha 会先做只读连接',
+    googleConnectionDescription: '下一阶段会连接 Gmail 和 Google Calendar，用真实邮件和日历生成 briefing；发送邮件、修改日历仍会先停在确认队列。',
+    googleConnectionButton: '即将支持 Google 连接',
     canDo: '自动做',
     mustAsk: '先问我',
     mustNever: '绝不能做',
@@ -210,7 +226,11 @@ const copy = {
     navMeetings: 'Meetings',
     navBoundaries: 'Rules',
     demoWorkspace: 'Demo workspace',
-    synced: 'Synced 12 min ago',
+    dataSource: 'Demo data',
+    gmailNotConnected: 'Gmail not connected',
+    calendarNotConnected: 'Calendar not connected',
+    browserOnly: 'Browser-local storage',
+    safeMode: 'Runs after confirmation',
     processed: '42 emails, only 4 need your attention',
     language: 'Language',
     resetDemo: 'Reset demo',
@@ -283,6 +303,10 @@ const copy = {
     moreTimes: 'Show other times',
     boundaries: 'Automation Rules',
     boundariesDescription: 'One glance: automatic, ask first, or never.',
+    googleConnection: 'Google Connection',
+    googleConnectionHeading: 'Private alpha starts read-only',
+    googleConnectionDescription: 'Next, PAP will connect Gmail and Google Calendar to generate briefings from real email and calendar data; sending email or changing calendars will still stop in the confirmation queue.',
+    googleConnectionButton: 'Google connection coming soon',
     canDo: 'Automatic',
     mustAsk: 'Ask first',
     mustNever: 'Never',
@@ -681,6 +705,8 @@ export default function Dashboard() {
         </div>
       </section>
 
+      <ConnectionReadinessPanel locale={locale} />
+
       <section id="automated" className="space-y-6">
         <PageHeader eyebrow={t.handled} title={t.handledHeading} description={t.handledDescription} />
         <p className="rounded-2xl border border-emerald-300/10 bg-stone-950/50 px-4 py-3 text-sm text-emerald-100">
@@ -785,17 +811,21 @@ function AppShell(props: {
 
 function SyncStatus(props: { locale: Locale }) {
   const t = copy[props.locale];
+  const integrationLabels = integrationStatusLabels(demoIntegrationStatus, props.locale);
 
   return (
-    <header className="rounded-[2rem] border border-emerald-300/15 bg-[radial-gradient(circle_at_top_left,#155e4f,transparent_34%),linear-gradient(135deg,#10211d,#050807)] p-5 shadow-2xl shadow-black/25 md:flex md:items-center md:justify-between">
+    <header className="rounded-[2rem] border border-emerald-300/15 bg-[radial-gradient(circle_at_top_left,#155e4f,transparent_34%),linear-gradient(135deg,#10211d,#050807)] p-5 shadow-2xl shadow-black/25">
       <div>
         <p className="text-sm font-medium uppercase tracking-[0.28em] text-emerald-200">{t.demoWorkspace}</p>
         <p className="mt-3 text-2xl font-semibold text-stone-50">{t.processed}</p>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/80">{t.statusDetail}</p>
       </div>
-      <div className="mt-4 rounded-2xl bg-emerald-300 px-5 py-4 text-emerald-950 md:mt-0">
-        <p className="text-sm font-medium">{t.synced}</p>
-        <p className="text-lg font-semibold">2026-05-04</p>
+      <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        {integrationLabels.map((label) => (
+          <p key={label} className="rounded-full border border-emerald-300/20 bg-emerald-950/35 px-4 py-2 text-sm font-semibold text-emerald-100">
+            {label}
+          </p>
+        ))}
       </div>
     </header>
   );
@@ -1224,6 +1254,27 @@ function AutomationBoundarySection(props: {
   );
 }
 
+function ConnectionReadinessPanel(props: { locale: Locale }) {
+  const t = copy[props.locale];
+  const integrationLabels = integrationStatusLabels(demoIntegrationStatus, props.locale);
+
+  return (
+    <section className="space-y-4">
+      <PageHeader eyebrow={t.googleConnection} title={t.googleConnectionHeading} description={t.googleConnectionDescription} />
+      <div className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
+        <div className="flex flex-wrap gap-2">
+          {integrationLabels.map((label) => (
+            <Chip key={label}>{label}</Chip>
+          ))}
+        </div>
+        <button className="mt-5 cursor-not-allowed rounded-full border border-emerald-300/30 px-4 py-2.5 text-sm font-semibold text-emerald-100" disabled>
+          {t.googleConnectionButton}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function OutcomeFeedbackBar(props: { locale: Locale; events: AuditEvent[] }) {
   const t = copy[props.locale];
   const latestEvent = latestAuditEvent(props.events);
@@ -1286,6 +1337,18 @@ function ActivityPanels(props: { locale: Locale; events: AuditEvent[] }) {
       </div>
     </section>
   );
+}
+
+function integrationStatusLabels(status: PapIntegrationStatus, locale: Locale) {
+  const t = copy[locale];
+
+  return [
+    status.source === 'demo_data' ? t.dataSource : 'Google',
+    status.gmail === 'not_connected' ? t.gmailNotConnected : 'Gmail',
+    status.calendar === 'not_connected' ? t.calendarNotConnected : 'Calendar',
+    status.storage === 'browser_local' ? t.browserOnly : 'Server storage',
+    status.automationMode === 'confirmation_only' ? t.safeMode : 'Live actions',
+  ];
 }
 
 function latestAuditEvent(events: AuditEvent[]) {

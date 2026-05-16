@@ -24,7 +24,13 @@ describe('PAP dashboard', () => {
     expect(screen.getByText('PAP 已替你清掉这些事')).toBeInTheDocument();
     expect(screen.getByText('这些时间可以直接发')).toBeInTheDocument();
     expect(screen.getAllByText('自动化边界')[0]).toBeInTheDocument();
-    expect(screen.getByText('12 分钟前已同步')).toBeInTheDocument();
+    expect(screen.getAllByText('演示数据')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Gmail 未连接')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Calendar 未连接')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('浏览器本地保存')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('确认后才执行')[0]).toBeInTheDocument();
+    expect(screen.getByText('Private alpha 会先做只读连接')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '即将支持 Google 连接' })).toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: 'English' }));
 
@@ -36,6 +42,12 @@ describe('PAP dashboard', () => {
     expect(screen.getByText('PAP cleared these for you')).toBeInTheDocument();
     expect(screen.getByText('These times are ready to send')).toBeInTheDocument();
     expect(screen.getAllByText('Automation Rules')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Demo data')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Gmail not connected')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Calendar not connected')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Browser-local storage')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Runs after confirmation')[0]).toBeInTheDocument();
+    expect(screen.getByText('Private alpha starts read-only')).toBeInTheDocument();
   });
 
   it('shows pending confirmation hierarchy and preserves confirm/reject flows', async () => {

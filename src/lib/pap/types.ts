@@ -105,6 +105,16 @@ export interface MeetingSuggestion {
   }>;
 }
 
+export type PapConnectionStatus = 'demo' | 'not_connected' | 'connected' | 'error';
+
+export interface PapIntegrationStatus {
+  source: 'demo_data' | 'live_google';
+  gmail: PapConnectionStatus;
+  calendar: PapConnectionStatus;
+  storage: 'browser_local' | 'server';
+  automationMode: 'confirmation_only' | 'live_actions';
+}
+
 export interface DailyBriefing {
   date: string;
   topPriorities: string[];
