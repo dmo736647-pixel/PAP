@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AlphaInviteStatus {
+  invited
+  accepted
+  revoked
+}
+
+enum GoogleSyncStatus {
+  running
+  succeeded
+  failed
+}
+
+enum PapWorkspaceSource {
+  demo
+  google
+}
+
+enum PapWorkspaceStatus {
+  generated
+  stale
+  failed
+}
+
+model User {
+  id                String                         @id @default(cuid())
+  email             String                         @unique
+  name              String?
+  image             String?
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
+  lastLoginAt       DateTime?
+  googleCredentials GoogleCredential[]
+  syncRuns          GoogleSyncRun[]
+  emailSnapshots    GoogleEmailSnapshot[]
+  calendarSnapshots GoogleCalendarEventSnapshot[]
+  workspaces        PapWorkspace[]
+}
+
+model AlphaInvite {
+  id         String            @id @default(cuid())
+  email      String            @unique
+  status     AlphaInviteStatus @default(invited)
+  createdAt  DateTime          @default(now())
+  acceptedAt DateTime?
+}
+
+model GoogleCredential {
+  id                    String    @id @default(cuid())
+  userId                String
+  googleAccountId       String
+  accessTokenEncrypted  String
+  refreshTokenEncrypted String?
+  scope                 String
+  expiresAt             DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  revokedAt             DateTime?
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, googleAccountId])
+  @@index([userId])
+}
+
+model GoogleSyncRun {
+  id                 String                        @id @default(cuid())
+  userId             String
+  status             GoogleSyncStatus
+  startedAt          DateTime                      @default(now())
+  finishedAt         DateTime?
+  errorMessage       String?
+  gmailMessageCount  Int                           @default(0)
+  calendarEventCount Int                           @default(0)
+  user               User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailSnapshots     GoogleEmailSnapshot[]
+  calendarSnapshots  GoogleCalendarEventSnapshot[]
+
+  @@index([userId, startedAt])
+}
+
+model GoogleEmailSnapshot {
+  id              String        @id @default(cuid())
+  userId          String
+  googleMessageId String
+  threadId        String
+  from            String
+  to              Json
+  subject         String
+  snippet         String
+  receivedAt      DateTime
+  labels          Json
+  rawMetadataJson Json
+  syncRunId       String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  syncRun         GoogleSyncRun @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, googleMessageId])
+  @@index([userId, receivedAt])
+  @@index([syncRunId])
+}
+
+model GoogleCalendarEventSnapshot {
+  id              String        @id @default(cuid())
+  userId          String
+  googleEventId   String
+  calendarId      String
+  title           String
+  description     String?
+  startsAt        DateTime
+  endsAt          DateTime
+  attendees       Json
+  rawMetadataJson Json
+  syncRunId       String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  syncRun         GoogleSyncRun @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, googleEventId])
+  @@index([userId, startsAt])
+  @@index([syncRunId])
+}
+
+model PapWorkspace {
+  id                       String             @id @default(cuid())
+  userId                   String
+  source                   PapWorkspaceSource
+  status                   PapWorkspaceStatus @default(generated)
+  generatedAt              DateTime           @default(now())
+  briefingJson             Json
+  pendingActionsJson       Json
+  automaticallyHandledJson Json
+  meetingSuggestionsJson   Json
+  auditEventsJson          Json
+  user                     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, generatedAt])
+}
