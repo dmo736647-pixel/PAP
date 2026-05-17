@@ -87,17 +87,25 @@ export async function fetchGoogleProfile(input: {
 }
 
 export function parseGoogleProfile(payload: unknown): GoogleProfile {
-  const profile = payload as { sub?: string; email?: string; name?: string; picture?: string };
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Google profile is malformed');
+  }
 
-  if (!profile.sub || !profile.email) {
+  const profile = payload as { sub?: unknown; email?: unknown; email_verified?: unknown; name?: unknown; picture?: unknown };
+
+  if (typeof profile.sub !== 'string' || typeof profile.email !== 'string') {
     throw new Error('Google profile is missing sub or email');
+  }
+
+  if (profile.email_verified !== true) {
+    throw new Error('Google profile email is not verified');
   }
 
   return {
     googleAccountId: profile.sub,
     email: normalizeEmail(profile.email),
-    name: profile.name,
-    image: profile.picture,
+    name: typeof profile.name === 'string' ? profile.name : undefined,
+    image: typeof profile.picture === 'string' ? profile.picture : undefined,
   };
 }
 

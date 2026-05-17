@@ -24,6 +24,7 @@ describe('google oauth helpers', () => {
     expect(parseGoogleProfile({
       sub: 'google-user-id',
       email: 'Founder@Example.com',
+      email_verified: true,
       name: 'Founder',
       picture: 'https://example.com/avatar.png',
     })).toEqual({
@@ -32,5 +33,20 @@ describe('google oauth helpers', () => {
       name: 'Founder',
       image: 'https://example.com/avatar.png',
     });
+  });
+
+  it('rejects malformed Google profile payloads', () => {
+    expect(() => parseGoogleProfile(null)).toThrow('Google profile is malformed');
+    expect(() => parseGoogleProfile({ sub: 123, email: 'founder@example.com', email_verified: true })).toThrow(
+      'Google profile is missing sub or email',
+    );
+  });
+
+  it('rejects Google profiles without a verified email', () => {
+    expect(() => parseGoogleProfile({
+      sub: 'google-user-id',
+      email: 'founder@example.com',
+      email_verified: false,
+    })).toThrow('Google profile email is not verified');
   });
 });
