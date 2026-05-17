@@ -14,7 +14,7 @@ export function createGoogleWorkspaceBriefing(input: {
   const events = input.calendarSnapshots.map(calendarSnapshotToCalendarEvent);
   const triagedEmails = emails.map((email) => triageEmail(email, input.preferences));
   const actions = triagedEmails.map((triaged) => createSuggestedAction(triaged, input.preferences));
-  const meetingSuggestions = createMeetingSuggestions(triagedEmails, events, input.preferences);
+  const meetingSuggestions = createMeetingSuggestions(triagedEmails, events, input.preferences, input.now);
 
   return createDailyBriefing({
     now: input.now,

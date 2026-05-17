@@ -36,4 +36,30 @@ describe('google workspace generation', () => {
     expect(briefing.pendingConfirmations[0].title).toBe('Review important email from Maya Chen');
     expect(briefing.date).toBe('2026-05-17');
   });
+
+  it('anchors meeting suggestions to the Google workspace date', () => {
+    const briefing = createGoogleWorkspaceBriefing({
+      now: '2026-05-17T12:00:00.000Z',
+      preferences: samplePreferences,
+      emailSnapshots: [
+        {
+          id: 'snapshot_1',
+          googleMessageId: 'gmail_1',
+          threadId: 'thread_1',
+          from: 'client@example.com',
+          to: ['me@example.com'],
+          subject: 'Schedule a call',
+          snippet: 'Could you suggest a meeting time next week?',
+          receivedAt: new Date('2026-05-17T08:00:00.000Z'),
+          labels: ['INBOX'],
+        },
+      ],
+      calendarSnapshots: [],
+    });
+
+    expect(briefing.meetingSuggestions[0].proposedSlots[0].startsAt).toContain('2026-05-17');
+    expect(new Date(briefing.meetingSuggestions[0].proposedSlots[0].startsAt).getTime()).toBeGreaterThan(
+      new Date('2026-05-17T12:00:00.000Z').getTime(),
+    );
+  });
 });

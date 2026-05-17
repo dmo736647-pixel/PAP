@@ -27,6 +27,22 @@ describe('google snapshot connector', () => {
     });
   });
 
+  it('extracts sender email addresses from Gmail display-name headers', () => {
+    const message = emailSnapshotToEmailMessage({
+      id: 'snapshot_1',
+      googleMessageId: 'gmail_1',
+      threadId: 'thread_1',
+      from: 'Maya Chen <maya@client.example>',
+      to: ['me@example.com'],
+      subject: 'Contract review',
+      snippet: 'Please review the contract before Friday.',
+      receivedAt: new Date('2026-05-17T08:00:00.000Z'),
+      labels: ['INBOX'],
+    });
+
+    expect(message.from).toBe('maya@client.example');
+  });
+
   it('maps Calendar snapshots to PAP calendar events', () => {
     const event = calendarSnapshotToCalendarEvent({
       id: 'snapshot_1',

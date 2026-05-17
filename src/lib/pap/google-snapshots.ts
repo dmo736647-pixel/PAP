@@ -25,7 +25,7 @@ export function emailSnapshotToEmailMessage(snapshot: GoogleEmailSnapshotLike): 
   return {
     id: snapshot.googleMessageId,
     threadId: snapshot.threadId,
-    from: snapshot.from,
+    from: extractEmailAddress(snapshot.from),
     to: stringArray(snapshot.to),
     subject: snapshot.subject,
     body: snapshot.snippet,
@@ -46,4 +46,9 @@ export function calendarSnapshotToCalendarEvent(snapshot: GoogleCalendarEventSna
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function extractEmailAddress(value: string): string {
+  const match = value.match(/<([^<>]+)>/);
+  return (match?.[1] ?? value).trim().toLowerCase();
 }
