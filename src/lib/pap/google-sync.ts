@@ -1,5 +1,7 @@
-import { decryptSecret } from './crypto';
+import type { PrismaClient } from '@prisma/client';
+import { decryptSecret, encryptSecret } from './crypto';
 import { googleRestClient, type GoogleCalendarSnapshotInput, type GoogleEmailSnapshotInput, type GoogleReadOnlyClient } from './google-api';
+import { readGoogleOAuthConfig, refreshGoogleAccessToken, type GoogleTokenResponse } from './google-oauth';
 import { createGoogleWorkspaceBriefing } from './google-workspace';
 import { prisma } from './prisma';
 import { samplePreferences } from './fixtures';
@@ -18,12 +20,19 @@ export type GoogleSyncResult =
   | { status: 'succeeded'; gmailMessageCount: number; calendarEventCount: number }
   | { status: 'failed'; errorMessage: string };
 
+export type GoogleSyncCounts = { gmailMessageCount: number; calendarEventCount: number };
+
 export type GoogleSyncStore = {
   createSyncRun(userId: string): Promise<{ id: string }>;
-  replaceEmailSnapshots(userId: string, syncRunId: string, snapshots: GoogleEmailSnapshotInput[]): Promise<void>;
-  replaceCalendarSnapshots(userId: string, syncRunId: string, snapshots: GoogleCalendarSnapshotInput[]): Promise<void>;
-  createWorkspace(workspace: { userId: string; briefing: DailyBriefing }): Promise<void>;
-  finishSyncRun(syncRunId: string, counts: { gmailMessageCount: number; calendarEventCount: number }): Promise<void>;
+  updateCredentialTokens(credentialId: string, tokens: { accessTokenEncrypted: string; expiresAt: Date | null }): Promise<void>;
+  completeSuccessfulSync(input: {
+    userId: string;
+    syncRunId: string;
+    emailSnapshots: GoogleEmailSnapshotInput[];
+    calendarSnapshots: GoogleCalendarSnapshotInput[];
+    briefing: DailyBriefing;
+    counts: GoogleSyncCounts;
+  }): Promise<void>;
   failSyncRun(syncRunId: string, errorMessage: string): Promise<void>;
 };
 
@@ -33,12 +42,19 @@ export async function syncGoogleSnapshots(input: {
   preferences?: UserPreferences;
   loadCredential?: (userId: string) => Promise<GoogleCredentialLike | null>;
   decryptToken?: (encrypted: string) => string;
+  encryptToken?: (token: string) => string;
+  refreshAccessToken?: (refreshToken: string) => Promise<GoogleTokenResponse>;
   googleClient?: GoogleReadOnlyClient;
   store?: GoogleSyncStore;
 }): Promise<GoogleSyncResult> {
   const store = input.store ?? prismaGoogleSyncStore;
   const loadCredential = input.loadCredential ?? loadLatestCredential;
   const decryptToken = input.decryptToken ?? ((encrypted) => decryptSecret(encrypted));
+  const encryptToken = input.encryptToken ?? ((token) => encryptSecret(token));
+  const refreshAccessToken = input.refreshAccessToken ?? ((refreshToken) => refreshGoogleAccessToken({
+    refreshToken,
+    config: readGoogleOAuthConfig(),
+  }));
   const googleClient = input.googleClient ?? googleRestClient;
   const syncRun = await store.createSyncRun(input.userId);
 
@@ -48,7 +64,24 @@ export async function syncGoogleSnapshots(input: {
       throw new Error('Google credential not found');
     }
 
-    const accessToken = decryptToken(credential.accessTokenEncrypted);
+    let accessToken = decryptToken(credential.accessTokenEncrypted);
+    if (shouldRefreshAccessToken(credential.expiresAt, input.now)) {
+      if (!credential.refreshTokenEncrypted) {
+        throw new Error('Google refresh token not found');
+      }
+
+      const refreshToken = decryptToken(credential.refreshTokenEncrypted);
+      const refreshed = await refreshAccessToken(refreshToken);
+      accessToken = refreshed.access_token;
+      const expiresAt = typeof refreshed.expires_in === 'number'
+        ? new Date(input.now.getTime() + refreshed.expires_in * 1000)
+        : null;
+      await store.updateCredentialTokens(credential.id, {
+        accessTokenEncrypted: encryptToken(refreshed.access_token),
+        expiresAt,
+      });
+    }
+
     const timeMax = new Date(input.now);
     timeMax.setUTCDate(timeMax.getUTCDate() + 14);
 
@@ -64,25 +97,34 @@ export async function syncGoogleSnapshots(input: {
       emailSnapshots: emailSnapshots.map((snapshot, index) => ({ ...snapshot, id: `email_${index}` })),
       calendarSnapshots: calendarSnapshots.map((snapshot, index) => ({ ...snapshot, id: `event_${index}` })),
     });
-
-    await store.replaceEmailSnapshots(input.userId, syncRun.id, emailSnapshots);
-    await store.replaceCalendarSnapshots(input.userId, syncRun.id, calendarSnapshots);
-    await store.createWorkspace({ userId: input.userId, briefing });
-    await store.finishSyncRun(syncRun.id, {
-      gmailMessageCount: emailSnapshots.length,
-      calendarEventCount: calendarSnapshots.length,
-    });
-
-    return {
-      status: 'succeeded',
+    const counts = {
       gmailMessageCount: emailSnapshots.length,
       calendarEventCount: calendarSnapshots.length,
     };
+
+    await store.completeSuccessfulSync({
+      userId: input.userId,
+      syncRunId: syncRun.id,
+      emailSnapshots,
+      calendarSnapshots,
+      briefing,
+      counts,
+    });
+
+    return { status: 'succeeded', ...counts };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Google sync failed';
     await store.failSyncRun(syncRun.id, message);
     return { status: 'failed', errorMessage: message };
   }
+}
+
+function shouldRefreshAccessToken(expiresAt: Date | null, now: Date): boolean {
+  if (!expiresAt) {
+    return false;
+  }
+
+  return expiresAt.getTime() <= now.getTime() + 5 * 60 * 1000;
 }
 
 async function loadLatestCredential(userId: string): Promise<GoogleCredentialLike | null> {
@@ -97,67 +139,70 @@ export const prismaGoogleSyncStore: GoogleSyncStore = {
     return prisma.googleSyncRun.create({ data: { userId, status: 'running' } });
   },
 
-  async replaceEmailSnapshots(userId, syncRunId, snapshots) {
-    await prisma.googleEmailSnapshot.deleteMany({ where: { userId } });
-    await prisma.googleEmailSnapshot.createMany({
-      data: snapshots.map((snapshot) => ({
-        userId,
-        syncRunId,
-        googleMessageId: snapshot.googleMessageId,
-        threadId: snapshot.threadId,
-        from: snapshot.from,
-        to: snapshot.to,
-        subject: snapshot.subject,
-        snippet: snapshot.snippet,
-        receivedAt: snapshot.receivedAt,
-        labels: snapshot.labels,
-        rawMetadataJson: snapshot.rawMetadataJson as object,
-      })),
-    });
-  },
-
-  async replaceCalendarSnapshots(userId, syncRunId, snapshots) {
-    await prisma.googleCalendarEventSnapshot.deleteMany({ where: { userId } });
-    await prisma.googleCalendarEventSnapshot.createMany({
-      data: snapshots.map((snapshot) => ({
-        userId,
-        syncRunId,
-        googleEventId: snapshot.googleEventId,
-        calendarId: snapshot.calendarId,
-        title: snapshot.title,
-        description: snapshot.description,
-        startsAt: snapshot.startsAt,
-        endsAt: snapshot.endsAt,
-        attendees: snapshot.attendees,
-        rawMetadataJson: snapshot.rawMetadataJson as object,
-      })),
-    });
-  },
-
-  async createWorkspace(workspace) {
-    await prisma.papWorkspace.create({
+  async updateCredentialTokens(credentialId, tokens) {
+    await prisma.googleCredential.update({
+      where: { id: credentialId },
       data: {
-        userId: workspace.userId,
-        source: 'google',
-        status: 'generated',
-        briefingJson: workspace.briefing as unknown as object,
-        pendingActionsJson: workspace.briefing.pendingConfirmations as unknown as object,
-        automaticallyHandledJson: workspace.briefing.automaticallyHandled as unknown as object,
-        meetingSuggestionsJson: workspace.briefing.meetingSuggestions as unknown as object,
-        auditEventsJson: [],
+        accessTokenEncrypted: tokens.accessTokenEncrypted,
+        expiresAt: tokens.expiresAt,
       },
     });
   },
 
-  async finishSyncRun(syncRunId, counts) {
-    await prisma.googleSyncRun.update({
-      where: { id: syncRunId },
-      data: {
-        status: 'succeeded',
-        finishedAt: new Date(),
-        gmailMessageCount: counts.gmailMessageCount,
-        calendarEventCount: counts.calendarEventCount,
-      },
+  async completeSuccessfulSync(input) {
+    await prisma.$transaction(async (tx: Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>) => {
+      await tx.googleEmailSnapshot.deleteMany({ where: { userId: input.userId } });
+      await tx.googleEmailSnapshot.createMany({
+        data: input.emailSnapshots.map((snapshot) => ({
+          userId: input.userId,
+          syncRunId: input.syncRunId,
+          googleMessageId: snapshot.googleMessageId,
+          threadId: snapshot.threadId,
+          from: snapshot.from,
+          to: snapshot.to,
+          subject: snapshot.subject,
+          snippet: snapshot.snippet,
+          receivedAt: snapshot.receivedAt,
+          labels: snapshot.labels,
+          rawMetadataJson: snapshot.rawMetadataJson as object,
+        })),
+      });
+      await tx.googleCalendarEventSnapshot.deleteMany({ where: { userId: input.userId } });
+      await tx.googleCalendarEventSnapshot.createMany({
+        data: input.calendarSnapshots.map((snapshot) => ({
+          userId: input.userId,
+          syncRunId: input.syncRunId,
+          googleEventId: snapshot.googleEventId,
+          calendarId: snapshot.calendarId,
+          title: snapshot.title,
+          description: snapshot.description,
+          startsAt: snapshot.startsAt,
+          endsAt: snapshot.endsAt,
+          attendees: snapshot.attendees,
+          rawMetadataJson: snapshot.rawMetadataJson as object,
+        })),
+      });
+      await tx.papWorkspace.create({
+        data: {
+          userId: input.userId,
+          source: 'google',
+          status: 'generated',
+          briefingJson: input.briefing as unknown as object,
+          pendingActionsJson: input.briefing.pendingConfirmations as unknown as object,
+          automaticallyHandledJson: input.briefing.automaticallyHandled as unknown as object,
+          meetingSuggestionsJson: input.briefing.meetingSuggestions as unknown as object,
+          auditEventsJson: [],
+        },
+      });
+      await tx.googleSyncRun.update({
+        where: { id: input.syncRunId },
+        data: {
+          status: 'succeeded',
+          finishedAt: new Date(),
+          gmailMessageCount: input.counts.gmailMessageCount,
+          calendarEventCount: input.counts.calendarEventCount,
+        },
+      });
     });
   },
 

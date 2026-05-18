@@ -78,6 +78,7 @@ export const googleRestClient: GoogleReadOnlyClient = {
     url.searchParams.set('orderBy', 'startTime');
     url.searchParams.set('timeMin', input.timeMin.toISOString());
     url.searchParams.set('timeMax', input.timeMax.toISOString());
+    url.searchParams.set('fields', 'items(id,summary,description,start(date,dateTime),end(date,dateTime),attendees(email))');
 
     const response = await fetch(url, {
       headers: { authorization: `Bearer ${accessToken}` },
@@ -104,10 +105,37 @@ export const googleRestClient: GoogleReadOnlyClient = {
       startsAt: new Date(event.start?.dateTime ?? `${event.start?.date}T00:00:00.000Z`),
       endsAt: new Date(event.end?.dateTime ?? `${event.end?.date}T00:00:00.000Z`),
       attendees: (event.attendees ?? []).map((attendee) => attendee.email).filter((email): email is string => Boolean(email)),
-      rawMetadataJson: event,
+      rawMetadataJson: sanitizeCalendarEventMetadata(event),
     }));
   },
 };
+
+function sanitizeCalendarEventMetadata(event: {
+  id?: string;
+  summary?: string;
+  description?: string;
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+  attendees?: Array<{ email?: string }>;
+}): unknown {
+  return {
+    id: event.id,
+    ...(event.summary ? { summary: event.summary } : {}),
+    ...(event.description ? { description: event.description } : {}),
+    start: {
+      ...(event.start?.date ? { date: event.start.date } : {}),
+      ...(event.start?.dateTime ? { dateTime: event.start.dateTime } : {}),
+    },
+    end: {
+      ...(event.end?.date ? { date: event.end.date } : {}),
+      ...(event.end?.dateTime ? { dateTime: event.end.dateTime } : {}),
+    },
+    attendees: (event.attendees ?? [])
+      .map((attendee) => attendee.email)
+      .filter((email): email is string => Boolean(email))
+      .map((email) => ({ email })),
+  };
+}
 
 function splitAddresses(value: string): string[] {
   return value.split(',').map((item) => item.trim()).filter(Boolean);

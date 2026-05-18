@@ -50,22 +50,36 @@ export async function exchangeGoogleCodeForTokens(input: {
   config: GoogleOAuthConfig;
   fetchImpl?: typeof fetch;
 }): Promise<GoogleTokenResponse> {
-  const fetcher = input.fetchImpl ?? fetch;
-  const response = await fetcher('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
+  const response = await postGoogleTokenRequest({
+    body: {
       code: input.code,
       client_id: input.config.clientId,
       client_secret: input.config.clientSecret,
       redirect_uri: input.config.redirectUri,
       grant_type: 'authorization_code',
-    }),
+    },
+    errorPrefix: 'Google token exchange failed',
+    fetchImpl: input.fetchImpl,
   });
 
-  if (!response.ok) {
-    throw new Error(`Google token exchange failed: ${response.status}`);
-  }
+  return response.json() as Promise<GoogleTokenResponse>;
+}
+
+export async function refreshGoogleAccessToken(input: {
+  refreshToken: string;
+  config: GoogleOAuthConfig;
+  fetchImpl?: typeof fetch;
+}): Promise<GoogleTokenResponse> {
+  const response = await postGoogleTokenRequest({
+    body: {
+      refresh_token: input.refreshToken,
+      client_id: input.config.clientId,
+      client_secret: input.config.clientSecret,
+      grant_type: 'refresh_token',
+    },
+    errorPrefix: 'Google token refresh failed',
+    fetchImpl: input.fetchImpl,
+  });
 
   return response.json() as Promise<GoogleTokenResponse>;
 }
@@ -84,6 +98,25 @@ export async function fetchGoogleProfile(input: {
   }
 
   return parseGoogleProfile(await response.json());
+}
+
+async function postGoogleTokenRequest(input: {
+  body: Record<string, string>;
+  errorPrefix: string;
+  fetchImpl?: typeof fetch;
+}): Promise<Response> {
+  const fetcher = input.fetchImpl ?? fetch;
+  const response = await fetcher('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(input.body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`${input.errorPrefix}: ${response.status}`);
+  }
+
+  return response;
 }
 
 export function parseGoogleProfile(payload: unknown): GoogleProfile {

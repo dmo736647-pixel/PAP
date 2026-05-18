@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { createGoogleOAuthUrl, parseGoogleProfile } from '../google-oauth';
+import { describe, expect, it, vi } from 'vitest';
+import { createGoogleOAuthUrl, parseGoogleProfile, refreshGoogleAccessToken } from '../google-oauth';
 
 describe('google oauth helpers', () => {
   it('creates an OAuth URL with read-only Gmail and Calendar scopes', () => {
@@ -48,5 +48,29 @@ describe('google oauth helpers', () => {
       email: 'founder@example.com',
       email_verified: false,
     })).toThrow('Google profile email is not verified');
+  });
+
+  it('refreshes an access token with the server-side refresh grant', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      access_token: 'new-access-token',
+      expires_in: 3600,
+      scope: 'scope',
+    }), { status: 200 }));
+
+    await expect(refreshGoogleAccessToken({
+      refreshToken: 'refresh-token',
+      config: { clientId: 'client-id', clientSecret: 'client-secret', redirectUri: 'http://localhost/callback' },
+      fetchImpl: fetchMock,
+    })).resolves.toEqual({
+      access_token: 'new-access-token',
+      expires_in: 3600,
+      scope: 'scope',
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://oauth2.googleapis.com/token');
+    expect(init?.method).toBe('POST');
+    expect(init?.headers).toEqual({ 'content-type': 'application/x-www-form-urlencoded' });
+    expect(String(init?.body)).toBe('refresh_token=refresh-token&client_id=client-id&client_secret=client-secret&grant_type=refresh_token');
   });
 });
