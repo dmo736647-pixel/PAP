@@ -37,6 +37,7 @@ describe('PAP dashboard', () => {
           auditRecords: [],
         },
       }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ state: 'logged_out', hasWorkspace: false }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ action: { status: 'confirmed' } }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         workspace: {
@@ -79,8 +80,9 @@ describe('PAP dashboard', () => {
     expect(screen.getAllByText('Calendar 未连接')[0]).toBeInTheDocument();
     expect(screen.getAllByText('浏览器本地保存')[0]).toBeInTheDocument();
     expect(screen.getAllByText('确认后才执行')[0]).toBeInTheDocument();
+    expect(screen.getByText('Google 连接')).toBeInTheDocument();
     expect(screen.getByText('Private alpha 会先做只读连接')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '即将支持 Google 连接' })).toBeDisabled();
+    expect(screen.getByText('即将支持 Google 连接')).toBeInTheDocument();
     expect(await screen.findByText('Alpha API 已就绪')).toBeInTheDocument();
     expect(screen.getByText('API 待确认 2 个')).toBeInTheDocument();
     expect(screen.getByText('API 记录 0 条')).toBeInTheDocument();

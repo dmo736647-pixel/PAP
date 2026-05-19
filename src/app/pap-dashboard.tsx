@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { confirmAlphaAction, fetchAlphaReadiness, fetchAlphaWorkspace, rejectAlphaAction, type AlphaReadinessResponse, type AlphaWorkspaceResponse } from '@/lib/pap/alpha-client';
+import { confirmAlphaAction, fetchAlphaReadiness, fetchAlphaWorkspace, fetchGoogleSyncStatus, logoutPapSession, rejectAlphaAction, runGoogleSync, type AlphaReadinessResponse, type AlphaWorkspaceResponse, type GoogleSyncStatusResponse } from '@/lib/pap/alpha-client';
 import type { ActionResult, ActionStatus, AuditEvent, AuditEventType } from '@/lib/pap/dashboard-state';
 import { sampleEmails, samplePreferences } from '@/lib/pap/fixtures';
 import { runPapV1Pipeline } from '@/lib/pap/pipeline';
@@ -488,6 +488,8 @@ export default function Dashboard() {
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [alphaApiState, setAlphaApiState] = useState<AlphaApiState>({});
+  const [googleSyncStatus, setGoogleSyncStatus] = useState<GoogleSyncStatusResponse>({ state: 'logged_out', hasWorkspace: false });
+  const [isSyncingGoogle, setIsSyncingGoogle] = useState(false);
   const briefing = useMemo(() => runPapV1Pipeline(persistedState.preferences), [persistedState.preferences]);
   const t = copy[locale];
   const results = persistedState.actionResults;
@@ -514,6 +516,12 @@ export default function Dashboard() {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    fetchGoogleSyncStatus()
+      .then(setGoogleSyncStatus)
+      .catch(() => setGoogleSyncStatus({ state: 'logged_out', hasWorkspace: false }));
   }, []);
 
   const emailsById = useMemo(
@@ -650,6 +658,31 @@ export default function Dashboard() {
     setDraft('');
   }
 
+  async function handleGoogleSync() {
+    setIsSyncingGoogle(true);
+    setGoogleSyncStatus({ state: 'syncing', hasWorkspace: googleSyncStatus.hasWorkspace });
+
+    try {
+      const result = await runGoogleSync();
+      if (result.status === 'succeeded') {
+        setGoogleSyncStatus({ state: 'synced', hasWorkspace: true });
+        const workspace = await fetchAlphaWorkspace();
+        setAlphaApiState((current) => ({ ...current, workspace }));
+      } else {
+        setGoogleSyncStatus({ state: 'sync_failed', hasWorkspace: false });
+      }
+    } catch {
+      setGoogleSyncStatus({ state: 'sync_failed', hasWorkspace: false });
+    } finally {
+      setIsSyncingGoogle(false);
+    }
+  }
+
+  async function handleLogout() {
+    await logoutPapSession();
+    setGoogleSyncStatus({ state: 'logged_out', hasWorkspace: false });
+  }
+
   return (
     <AppShell locale={locale} onLocaleChange={setLocale} onResetDemo={resetDemo}>
       <OutcomeFeedbackBar locale={locale} events={persistedState.auditEvents} />
@@ -763,7 +796,14 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <ConnectionReadinessPanel locale={locale} workspaceView={workspaceView} />
+      <ConnectionReadinessPanel
+        locale={locale}
+        workspaceView={workspaceView}
+        googleSyncStatus={googleSyncStatus}
+        isSyncingGoogle={isSyncingGoogle}
+        onGoogleSync={handleGoogleSync}
+        onLogout={handleLogout}
+      />
 
       <section id="automated" className="space-y-6">
         <PageHeader eyebrow={t.handled} title={t.handledHeading} description={t.handledDescription} />
@@ -1312,10 +1352,18 @@ function AutomationBoundarySection(props: {
   );
 }
 
-function ConnectionReadinessPanel(props: { locale: Locale; workspaceView: ReturnType<typeof createPapWorkspaceViewModel> }) {
+function ConnectionReadinessPanel(props: {
+  locale: Locale;
+  workspaceView: ReturnType<typeof createPapWorkspaceViewModel>;
+  googleSyncStatus: GoogleSyncStatusResponse;
+  isSyncingGoogle: boolean;
+  onGoogleSync: () => void;
+  onLogout: () => void;
+}) {
   const t = copy[props.locale];
   const integrationLabels = integrationStatusLabels(demoIntegrationStatus, props.locale);
   const alphaApiLabels = alphaApiStatusLabels(props.workspaceView, props.locale);
+  const { googleSyncStatus, isSyncingGoogle, locale } = props;
 
   return (
     <section className="space-y-4">
@@ -1331,9 +1379,42 @@ function ConnectionReadinessPanel(props: { locale: Locale; workspaceView: Return
             <Chip key={label}>{label}</Chip>
           ))}
         </div>
-        <button className="mt-5 cursor-not-allowed rounded-full border border-emerald-300/30 px-4 py-2.5 text-sm font-semibold text-emerald-100" disabled>
-          {t.googleConnectionButton}
-        </button>
+        <div className="mt-4 flex flex-wrap gap-3">
+          {googleSyncStatus.state === 'logged_out' ? (
+            <a href="/api/auth/google/start" className="rounded-full bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950">
+              {locale === 'zh' ? '使用 Google 登录' : 'Sign in with Google'}
+            </a>
+          ) : googleSyncStatus.state === 'not_invited' ? (
+            <span className="rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200">
+              {locale === 'zh' ? 'Private alpha 待邀请' : 'Private alpha invite required'}
+            </span>
+          ) : googleSyncStatus.state === 'connected_not_synced' || googleSyncStatus.state === 'sync_failed' ? (
+            <button onClick={props.onGoogleSync} disabled={isSyncingGoogle} className="rounded-full bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60">
+              {isSyncingGoogle ? (locale === 'zh' ? '正在同步' : 'Syncing') : (locale === 'zh' ? '同步 Google 数据' : 'Sync Google data')}
+            </button>
+          ) : googleSyncStatus.state === 'syncing' ? (
+            <span className="rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-cyan-200">
+              {locale === 'zh' ? '正在同步 Google 数据' : 'Syncing Google data'}
+            </span>
+          ) : (
+            <button onClick={props.onGoogleSync} disabled={isSyncingGoogle} className="rounded-full bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60">
+              {locale === 'zh' ? '重新同步' : 'Resync'}
+            </button>
+          )}
+          {googleSyncStatus.state !== 'logged_out' && (
+            <button onClick={props.onLogout} className="rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200">
+              {locale === 'zh' ? '退出登录' : 'Log out'}
+            </button>
+          )}
+        </div>
+        <p className="mt-3 text-sm text-slate-400">
+          {googleSyncStatus.state === 'synced'
+            ? (locale === 'zh' ? '已连接真实 Google 数据；当前阶段只读，不会发送或修改任何内容。' : 'Google data connected. This phase is read-only and will not send or modify anything.')
+            : googleSyncStatus.state === 'sync_failed'
+              ? (locale === 'zh' ? '上次同步失败，旧工作区会保留，可重试。' : 'Last sync failed. The previous workspace is preserved and you can retry.')
+              : (locale === 'zh' ? '当前阶段只读取 Gmail 和 Calendar 快照。' : 'This phase only reads Gmail and Calendar snapshots.')}
+        </p>
+        <span className="sr-only">{t.googleConnectionButton}</span>
       </div>
     </section>
   );
