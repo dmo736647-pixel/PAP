@@ -13,8 +13,8 @@ const liveGoogleIntegrationStatus: PapIntegrationStatus = {
   automationMode: 'confirmation_only',
 };
 
-export function GET(request?: NextRequest) {
-  const cookie = request?.cookies.get(papSessionCookieName)?.value;
+export async function GET(request: NextRequest) {
+  const cookie = request.cookies.get(papSessionCookieName)?.value;
   const session = cookie ? parseSessionCookieValue(cookie) : null;
 
   if (session) {

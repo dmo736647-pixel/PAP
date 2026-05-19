@@ -19,9 +19,6 @@ export async function POST(request: NextRequest) {
 
   const result = await syncGoogleSnapshots({ userId: session.userId, now: new Date() });
 
-  if (result.status === 'succeeded') {
-    return NextResponse.json({ ok: true, result });
-  }
-
-  return NextResponse.json({ ok: false, result }, { status: 502 });
+  const status = result.status === 'succeeded' ? 200 : 502;
+  return NextResponse.json(result, { status });
 }

@@ -24,21 +24,8 @@ export type GoogleSyncStatusResponse = {
 };
 
 export type GoogleSyncResponse =
-  | {
-    ok: true;
-    result: {
-      status: 'succeeded';
-      gmailMessageCount: number;
-      calendarEventCount: number;
-    };
-  }
-  | {
-    ok: false;
-    result: {
-      status: 'failed';
-      errorMessage: string;
-    };
-  };
+  | { status: 'succeeded'; gmailMessageCount: number; calendarEventCount: number }
+  | { status: 'failed'; errorMessage: string };
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);

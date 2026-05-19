@@ -5,8 +5,9 @@ import { prisma } from '@/lib/pap/prisma';
 import { canAccessPrivateAlpha, normalizeEmail } from '@/lib/pap/private-alpha-access';
 import { createSessionCookieValue, papSessionCookieName } from '@/lib/pap/session';
 
-function redirectTo(request: NextRequest, auth: 'connected' | 'failed' | 'not-invited') {
-  return NextResponse.redirect(new URL(`/?auth=${auth}`, request.url));
+function redirectTo(auth: 'connected' | 'failed' | 'not-invited') {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+  return NextResponse.redirect(new URL(`/?auth=${auth}`, appUrl));
 }
 
 export async function GET(request: NextRequest) {
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
   const stateCookie = request.cookies.get('pap_oauth_state')?.value;
 
   if (!code || !state || !stateCookie || state !== stateCookie) {
-    const response = redirectTo(request, 'failed');
+    const response = redirectTo('failed');
     response.cookies.delete('pap_oauth_state');
     return response;
   }
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
     const invite = await prisma.alphaInvite.findUnique({ where: { email } });
 
     if (!canAccessPrivateAlpha(invite)) {
-      const response = redirectTo(request, 'not-invited');
+      const response = redirectTo('not-invited');
       response.cookies.delete('pap_oauth_state');
       return response;
     }
@@ -85,18 +86,19 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const response = redirectTo(request, 'connected');
+    const response = redirectTo('connected');
     response.cookies.set(papSessionCookieName, createSessionCookieValue({ userId: user.id, email }), {
       httpOnly: true,
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 24 * 30,
+      secure: process.env.NODE_ENV === 'production',
     });
     response.cookies.delete('pap_oauth_state');
 
     return response;
   } catch {
-    const response = redirectTo(request, 'failed');
+    const response = redirectTo('failed');
     response.cookies.delete('pap_oauth_state');
     return response;
   }

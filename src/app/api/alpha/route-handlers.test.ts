@@ -1,3 +1,4 @@
+import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { GET as getReadiness } from './readiness/route';
 import { GET as getWorkspace } from './workspace/route';
@@ -7,6 +8,10 @@ import { getAlphaWorkspaceSnapshot, resetAlphaWorkspaceStore } from '@/lib/pap/a
 
 async function json(response: Response) {
   return response.json() as Promise<unknown>;
+}
+
+function workspaceRequest() {
+  return new NextRequest('http://localhost/api/alpha/workspace');
 }
 
 describe('alpha API route handlers', () => {
@@ -31,7 +36,7 @@ describe('alpha API route handlers', () => {
   });
 
   it('returns an alpha workspace snapshot', async () => {
-    const body = await json(getWorkspace()) as {
+    const body = await json(await getWorkspace(workspaceRequest())) as {
       workspace: { user: { id: string }; actions: unknown[] };
     };
 
@@ -47,7 +52,7 @@ describe('alpha API route handlers', () => {
       action: { id: string; status: string };
       auditRecord: { eventType: string };
     };
-    let workspaceBody = await json(getWorkspace()) as {
+    let workspaceBody = await json(await getWorkspace(workspaceRequest())) as {
       workspace: { actions: Array<{ id: string; status: string }>; auditRecords: Array<{ eventType: string }> };
     };
 
@@ -60,7 +65,7 @@ describe('alpha API route handlers', () => {
       action: { id: string; status: string };
       auditRecord: { eventType: string };
     };
-    workspaceBody = await json(getWorkspace()) as {
+    workspaceBody = await json(await getWorkspace(workspaceRequest())) as {
       workspace: { actions: Array<{ id: string; status: string }>; auditRecords: Array<{ eventType: string }> };
     };
 
