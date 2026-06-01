@@ -17,8 +17,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const result = await syncGoogleSnapshots({ userId: session.userId, now: new Date() });
-
-  const status = result.status === 'succeeded' ? 200 : 502;
-  return NextResponse.json(result, { status });
+  try {
+    const result = await syncGoogleSnapshots({ userId: session.userId, now: new Date() });
+    console.log('[Sync] Result:', JSON.stringify(result));
+    const status = result.status === 'succeeded' ? 200 : 502;
+    return NextResponse.json(result, { status });
+  } catch (error) {
+    console.error('[Sync] Unexpected error:', error);
+    return NextResponse.json({ status: 'failed', errorMessage: error instanceof Error ? error.message : 'Unknown error' }, { status: 502 });
+  }
 }
