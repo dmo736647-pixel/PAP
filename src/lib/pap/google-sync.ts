@@ -59,19 +59,25 @@ export async function syncGoogleSnapshots(input: {
   const syncRun = await store.createSyncRun(input.userId);
 
   try {
+    console.log('[Sync] Starting for user:', input.userId);
     const credential = await loadCredential(input.userId);
     if (!credential) {
       throw new Error('Google credential not found');
     }
+    console.log('[Sync] Credential found, expires:', credential.expiresAt);
 
     let accessToken = decryptToken(credential.accessTokenEncrypted);
+    console.log('[Sync] Token decrypted, length:', accessToken.length);
+
     if (shouldRefreshAccessToken(credential.expiresAt, input.now)) {
+      console.log('[Sync] Token expired, refreshing...');
       if (!credential.refreshTokenEncrypted) {
         throw new Error('Google refresh token not found');
       }
 
       const refreshToken = decryptToken(credential.refreshTokenEncrypted);
       const refreshed = await refreshAccessToken(refreshToken);
+      console.log('[Sync] Token refreshed successfully');
       accessToken = refreshed.access_token;
       const expiresAt = typeof refreshed.expires_in === 'number'
         ? new Date(input.now.getTime() + refreshed.expires_in * 1000)
@@ -85,7 +91,10 @@ export async function syncGoogleSnapshots(input: {
     const timeMax = new Date(input.now);
     timeMax.setUTCDate(timeMax.getUTCDate() + 14);
 
-    const emailSnapshots = await googleClient.listRecentMessages(accessToken, 50);
+    console.log('[Sync] Fetching Gmail messages...');
+    const emailSnapshots = await googleClient.listRecentMessages(accessToken, 10);
+    console.log('[Sync] Got', emailSnapshots.length, 'emails');
+    console.log('[Sync] Fetching Calendar events...');
     const calendarSnapshots = await googleClient.listUpcomingEvents(accessToken, {
       timeMin: input.now,
       timeMax,
