@@ -26,7 +26,7 @@ describe('googleRestClient', () => {
       timeMax: new Date('2026-05-31T12:00:00.000Z'),
     });
 
-    const requestedUrl = fetchMock.mock.calls[0]?.[0] as URL;
+    const requestedUrl = new URL(fetchMock.mock.calls[0]?.[0] as string);
     expect(requestedUrl.searchParams.get('fields')).toBe('items(id,summary,description,start(date,dateTime),end(date,dateTime),attendees(email))');
     expect(snapshots).toEqual([{
       googleEventId: 'event_1',

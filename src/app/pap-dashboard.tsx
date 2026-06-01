@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { confirmAlphaAction, fetchAlphaReadiness, fetchAlphaWorkspace, fetchGoogleSyncStatus, logoutPapSession, rejectAlphaAction, runGoogleSync, type AlphaReadinessResponse, type AlphaWorkspaceResponse, type GoogleSyncStatusResponse } from '@/lib/pap/alpha-client';
+import { confirmAlphaAction, fetchAlphaReadiness, fetchAlphaWorkspace, fetchGoogleSyncStatus, logoutPapSession, rejectAlphaAction, runGoogleSync, sendMeetingReply, type AlphaReadinessResponse, type AlphaWorkspaceResponse, type GoogleSyncStatusResponse } from '@/lib/pap/alpha-client';
 import type { ActionResult, ActionStatus, AuditEvent, AuditEventType } from '@/lib/pap/dashboard-state';
 import { sampleEmails, samplePreferences } from '@/lib/pap/fixtures';
 import { runPapV1Pipeline } from '@/lib/pap/pipeline';
@@ -45,6 +45,14 @@ const demoIntegrationStatus: PapIntegrationStatus = {
   storage: 'browser_local',
   automationMode: 'confirmation_only',
 };
+
+const liveGoogleIntegrationStatus: PapIntegrationStatus = {
+  source: 'live_google',
+  gmail: 'connected',
+  calendar: 'connected',
+  storage: 'server',
+  automationMode: 'confirmation_only',
+};
 const defaultDashboardState: PersistedDashboardStateV1 = {
   version: 1,
   preferences: samplePreferences,
@@ -66,15 +74,6 @@ type LocalizedAction = {
   chips: string[];
 };
 
-type LocalizedMeeting = {
-  title: string;
-  requestSummary: string;
-  participantLabel: string;
-  userTimeZone: string;
-  participantTimeZone: string;
-  draftReply: string;
-};
-
 const copy = {
   zh: {
     oneLiner: '把邮件和日历变成少数待决定事项。',
@@ -82,6 +81,7 @@ const copy = {
     navPending: '待确认',
     navAutomated: '已处理',
     navMeetings: '会议',
+    navGoogle: 'Google',
     navBoundaries: '边界',
     demoWorkspace: '演示工作区',
     dataSource: '演示数据',
@@ -131,6 +131,7 @@ const copy = {
     showOriginal: '查看原邮件',
     hideOriginal: '收起原邮件',
     from: '发件人',
+    received: '收件时间',
     to: '收件人',
     subject: '主题',
     confirm: '确认执行',
@@ -229,6 +230,7 @@ const copy = {
     navPending: 'Pending',
     navAutomated: 'Handled',
     navMeetings: 'Meetings',
+    navGoogle: 'Google',
     navBoundaries: 'Rules',
     demoWorkspace: 'Demo workspace',
     dataSource: 'Demo data',
@@ -278,6 +280,7 @@ const copy = {
     showOriginal: 'View original email',
     hideOriginal: 'Hide original email',
     from: 'From',
+    received: 'Received',
     to: 'To',
     subject: 'Subject',
     confirm: 'Do this',
@@ -490,7 +493,11 @@ export default function Dashboard() {
   const [alphaApiState, setAlphaApiState] = useState<AlphaApiState>({});
   const [googleSyncStatus, setGoogleSyncStatus] = useState<GoogleSyncStatusResponse>({ state: 'logged_out', hasWorkspace: false });
   const [isSyncingGoogle, setIsSyncingGoogle] = useState(false);
-  const briefing = useMemo(() => runPapV1Pipeline(persistedState.preferences), [persistedState.preferences]);
+  const localBriefing = useMemo(() => runPapV1Pipeline(persistedState.preferences), [persistedState.preferences]);
+  const briefings = alphaApiState.workspace?.workspace?.briefings;
+  const googleBriefing = briefings?.[0]?.briefing;
+  const briefingSource = briefings?.[0]?.source;
+  const briefing = (googleBriefing && briefingSource === 'live_google') ? googleBriefing : localBriefing;
   const t = copy[locale];
   const results = persistedState.actionResults;
   const editedDrafts = persistedState.editedDrafts;
@@ -524,10 +531,16 @@ export default function Dashboard() {
       .catch(() => setGoogleSyncStatus({ state: 'logged_out', hasWorkspace: false }));
   }, []);
 
-  const emailsById = useMemo(
-    () => new Map(sampleEmails.map((email) => [email.id, email])),
-    [],
-  );
+  const emailsById = useMemo(() => {
+    const map = new Map(sampleEmails.map((email) => [email.id, email]));
+    // Merge emails from Google workspace briefing (if live data)
+    if (briefingSource === 'live_google' && googleBriefing) {
+      for (const triaged of googleBriefing.importantEmails) {
+        map.set(triaged.email.id, triaged.email);
+      }
+    }
+    return map;
+  }, [briefingSource, googleBriefing]);
   const pendingActions = briefing.pendingConfirmations.filter(
     (action) => !results.some((result) => result.id === action.id),
   );
@@ -683,8 +696,19 @@ export default function Dashboard() {
     setGoogleSyncStatus({ state: 'logged_out', hasWorkspace: false });
   }
 
+  const isLiveGoogle = briefingSource === 'live_google';
+  const totalEmailCount = briefing.importantEmails.length + briefing.pendingConfirmations.length + briefing.automaticallyHandled.length;
+
   return (
-    <AppShell locale={locale} onLocaleChange={setLocale} onResetDemo={resetDemo}>
+    <AppShell
+      locale={locale}
+      onLocaleChange={setLocale}
+      onResetDemo={resetDemo}
+      isLive={isLiveGoogle}
+      totalEmails={totalEmailCount}
+      pendingCount={pendingActions.length}
+      handledCount={automaticActions.length}
+    >
       <OutcomeFeedbackBar locale={locale} events={persistedState.auditEvents} />
 
       <section id="pending" className="space-y-6 rounded-[2rem] border border-emerald-300/20 bg-[#0b1b17] p-4 shadow-2xl shadow-black/25 md:p-6">
@@ -788,6 +812,7 @@ export default function Dashboard() {
               suggestion={suggestion}
               email={emailsById.get(suggestion.emailId)}
               locale={locale}
+              isLive={isLiveGoogle}
               result={results.find((result) => result.id === `${suggestion.emailId}_more`)}
               onUseSlot={(title) => recordResult(title, 'slotUsed', `${suggestion.emailId}_slot`)}
               onMoreTimes={(title) => recordResult(title, 'moreOptions', `${suggestion.emailId}_more`)}
@@ -842,6 +867,10 @@ function AppShell(props: {
   locale: Locale;
   onLocaleChange: (locale: Locale) => void;
   onResetDemo: () => void;
+  isLive?: boolean;
+  totalEmails?: number;
+  pendingCount?: number;
+  handledCount?: number;
   children: ReactNode;
 }) {
   const t = copy[props.locale];
@@ -850,6 +879,7 @@ function AppShell(props: {
     { href: '#pending', label: t.navPending },
     { href: '#meetings', label: t.navMeetings },
     { href: '#automated', label: t.navAutomated },
+    { href: '#google', label: t.navGoogle },
     { href: '#boundaries', label: t.navBoundaries },
   ];
 
@@ -899,7 +929,7 @@ function AppShell(props: {
           </div>
         </aside>
         <div className="space-y-8">
-          <SyncStatus locale={props.locale} />
+          <SyncStatus locale={props.locale} isLive={props.isLive} totalEmails={props.totalEmails} pendingCount={props.pendingCount} handledCount={props.handledCount} />
           {props.children}
         </div>
       </div>
@@ -907,16 +937,33 @@ function AppShell(props: {
   );
 }
 
-function SyncStatus(props: { locale: Locale }) {
+function SyncStatus(props: { locale: Locale; isLive?: boolean; totalEmails?: number; pendingCount?: number; handledCount?: number }) {
   const t = copy[props.locale];
-  const integrationLabels = integrationStatusLabels(demoIntegrationStatus, props.locale);
+  const integrationLabels = integrationStatusLabels(
+    props.isLive ? liveGoogleIntegrationStatus : demoIntegrationStatus,
+    props.locale,
+  );
+
+  const eyebrow = props.isLive
+    ? (props.locale === 'zh' ? 'Google 真实数据' : 'Live Google Data')
+    : t.demoWorkspace;
+  const heading = props.isLive
+    ? (props.locale === 'zh'
+      ? `${props.totalEmails ?? 0} 封邮件，${props.pendingCount ?? 0} 件需要你看`
+      : `${props.totalEmails ?? 0} emails, ${props.pendingCount ?? 0} need your attention`)
+    : t.processed;
+  const detail = props.isLive
+    ? (props.locale === 'zh'
+      ? `${props.handledCount ?? 0} 个低风险事项已自动处理；待确认事项在下方。`
+      : `${props.handledCount ?? 0} low-risk items handled automatically; pending items are below.`)
+    : t.statusDetail;
 
   return (
     <header className="rounded-[2rem] border border-emerald-300/15 bg-[radial-gradient(circle_at_top_left,#155e4f,transparent_34%),linear-gradient(135deg,#10211d,#050807)] p-5 shadow-2xl shadow-black/25">
       <div>
-        <p className="text-sm font-medium uppercase tracking-[0.28em] text-emerald-200">{t.demoWorkspace}</p>
-        <p className="mt-3 text-2xl font-semibold text-stone-50">{t.processed}</p>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/80">{t.statusDetail}</p>
+        <p className="text-sm font-medium uppercase tracking-[0.28em] text-emerald-200">{eyebrow}</p>
+        <p className="mt-3 text-2xl font-semibold text-stone-50">{heading}</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/80">{detail}</p>
       </div>
       <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
         {integrationLabels.map((label) => (
@@ -1006,6 +1053,9 @@ function PendingConfirmationCard(props: {
         ))}
       </div>
       <h3 className="mt-4 text-2xl font-semibold leading-tight text-stone-50">{action.title}</h3>
+      {props.email && (
+        <p className="mt-1 text-sm text-stone-400">{t.received}：{new Date(props.email.receivedAt).toLocaleString(props.locale === 'zh' ? 'zh-CN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+      )}
       <div className="mt-5 rounded-2xl border border-emerald-300/25 bg-emerald-950/25 p-4 ring-1 ring-white/5">
         <p className="text-xs uppercase tracking-[0.18em] text-emerald-200">{t.confirmOutcome}</p>
         <p className="mt-1 text-sm text-stone-400">{t.preparedDraft}</p>
@@ -1095,51 +1145,168 @@ function MeetingSuggestionCard(props: {
   suggestion: MeetingSuggestion;
   email?: EmailMessage;
   locale: Locale;
+  isLive?: boolean;
   result?: ActionResult;
   onUseSlot: (title: string) => void;
   onMoreTimes: (title: string) => void;
 }) {
   const t = copy[props.locale];
-  const meeting = localizedMeeting(props.suggestion, props.locale);
-  const firstSlot = props.suggestion.proposedSlots[0];
+  const s = props.suggestion;
+  const [editingReply, setEditingReply] = useState(false);
+  const [draftText, setDraftText] = useState(s.draftReply);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
+  const [slotPage, setSlotPage] = useState(0);
+  const pageSize = 3;
+  const totalPages = Math.ceil(s.proposedSlots.length / pageSize);
+  const visibleSlots = s.proposedSlots.slice(slotPage * pageSize, slotPage * pageSize + pageSize);
+  const activeSlot = selectedSlot !== null ? s.proposedSlots[selectedSlot] : s.proposedSlots[0];
+
+  async function handleSendReply() {
+    setSending(true);
+    setSendError(null);
+    try {
+      if (props.isLive && props.email) {
+        await sendMeetingReply({
+          threadId: props.email.threadId,
+          to: s.participantEmail,
+          subject: props.email.subject,
+          body: draftText,
+        });
+      }
+      setSent(true);
+      const title = activeSlot
+        ? `${s.title} · ${formatTimeInZone(activeSlot.startsAt, props.locale, s.userTimeZone)}`
+        : s.title;
+      props.onUseSlot(title);
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : 'Send failed');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <article className="rounded-3xl border border-emerald-300/20 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
+        <p className="text-lg font-semibold text-emerald-200">
+          ✅ {props.locale === 'zh' ? '回复已发送' : 'Reply sent'}
+        </p>
+        <p className="mt-2 text-sm text-stone-400">
+          {props.locale === 'zh'
+            ? `已向 ${s.participantName} 发送会议时间建议`
+            : `Meeting time suggestion sent to ${s.participantName}`}
+        </p>
+      </article>
+    );
+  }
 
   return (
     <article className="rounded-3xl border border-cyan-300/10 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
       <div className="flex flex-wrap gap-2">
-        <Chip>{meeting.userTimeZone}</Chip>
-        <Chip>{meeting.participantTimeZone}</Chip>
+        <Chip>{s.userTimeZone}</Chip>
+        <Chip>{s.participantEmail}</Chip>
       </div>
-      <h3 className="mt-4 text-2xl font-semibold leading-tight text-stone-50">{meeting.title}</h3>
-      <p className="mt-2 text-sm leading-6 text-stone-300">{meeting.requestSummary}</p>
+      <h3 className="mt-4 text-2xl font-semibold leading-tight text-stone-50">{s.title}</h3>
+      <p className="mt-2 text-sm leading-6 text-stone-300">
+        {props.locale === 'zh'
+          ? `${s.participantName} 想和你安排一次会议。`
+          : `${s.participantName} wants to schedule a meeting with you.`}
+      </p>
       <div className="mt-5">
-        <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{t.recommendedSlots}</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{t.recommendedSlots}</p>
+          {totalPages > 1 && (
+            <p className="text-xs text-stone-500">{slotPage + 1}/{totalPages}</p>
+          )}
+        </div>
         <div className="mt-3 grid gap-3 md:grid-cols-3">
-          {props.suggestion.proposedSlots.map((slot, index) => (
-            <div key={slot.startsAt} className="rounded-2xl bg-emerald-950/35 p-4 text-sm text-stone-300 ring-1 ring-white/5">
-              <p className="text-lg font-semibold text-emerald-200">
-                {formatTimeInZone(slot.startsAt, props.locale, meeting.participantTimeZone)}
-              </p>
-              <p className="mt-1 text-stone-400">
-                {formatTimeInZone(slot.startsAt, props.locale, meeting.userTimeZone)} · {index + 1}
-              </p>
-            </div>
-          ))}
+          {visibleSlots.map((slot) => {
+            const globalIndex = s.proposedSlots.indexOf(slot);
+            const isSelected = (selectedSlot ?? 0) === globalIndex;
+            return (
+              <button
+                key={slot.startsAt}
+                type="button"
+                onClick={() => setSelectedSlot(globalIndex)}
+                className={`rounded-2xl p-4 text-left text-sm ring-1 transition ${
+                  isSelected
+                    ? 'bg-emerald-900/50 text-emerald-100 ring-emerald-300/40'
+                    : 'bg-emerald-950/35 text-stone-300 ring-white/5 hover:ring-emerald-300/20'
+                }`}
+              >
+                <p className="text-lg font-semibold text-emerald-200">
+                  {formatTimeInZone(slot.startsAt, props.locale, s.userTimeZone)}
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  {props.locale === 'zh' ? '你的时区' : 'Your timezone'}
+                </p>
+                {isSelected && (
+                  <p className="mt-2 text-xs font-medium text-emerald-300">
+                    {props.locale === 'zh' ? '✓ 已选中' : '✓ Selected'}
+                  </p>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
       <div className="mt-4 rounded-2xl bg-[#07110f] p-4 ring-1 ring-white/5">
         <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{t.preparedReply}</p>
-        <p className="mt-2 text-base leading-7 text-stone-200">{meeting.draftReply}</p>
+        {editingReply ? (
+          <div className="mt-2 space-y-3">
+            <textarea
+              className="min-h-32 w-full rounded-2xl border border-emerald-300/20 bg-stone-950/70 p-3 text-sm text-stone-100 outline-none focus:border-emerald-300"
+              value={draftText}
+              onChange={(e) => setDraftText(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button className="rounded-full bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950" onClick={() => setEditingReply(false)}>
+                {props.locale === 'zh' ? '保存' : 'Save'}
+              </button>
+              <button className="rounded-full bg-stone-800 px-4 py-2 text-sm font-semibold text-stone-200" onClick={() => { setDraftText(s.draftReply); setEditingReply(false); }}>
+                {props.locale === 'zh' ? '取消' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-2 whitespace-pre-wrap text-base leading-7 text-stone-200">{draftText}</p>
+        )}
       </div>
       {props.email && <OriginalEmail email={props.email} locale={props.locale} />}
-      {props.result && (
+      {sendError && (
+        <p className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-950/30 p-4 text-sm text-rose-200">
+          {sendError}
+        </p>
+      )}
+      {props.result && !sendError && (
         <p className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-950/30 p-4 text-sm font-medium text-emerald-100">
           {props.result.status === 'slotUsed' ? t.meetingInlineDone : t.meetingInlineMore}
         </p>
       )}
       <div className="mt-5 flex flex-wrap gap-2">
-        <button className="rounded-full bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950" onClick={() => props.onUseSlot(firstSlot ? `${meeting.title} · ${formatTimeInZone(firstSlot.startsAt, props.locale, meeting.participantTimeZone)}` : meeting.title)}>{t.useSlot}</button>
-        <button className="rounded-full bg-stone-800 px-4 py-2 text-sm font-semibold text-stone-200">{t.editReply}</button>
-        <button className="rounded-full border border-emerald-300/30 px-4 py-2 text-sm font-semibold text-emerald-100" onClick={() => props.onMoreTimes(meeting.title)}>{t.moreTimes}</button>
+        <button
+          className="rounded-full bg-emerald-300 px-5 py-2.5 text-sm font-semibold text-emerald-950 disabled:opacity-60"
+          onClick={handleSendReply}
+          disabled={sending}
+        >
+          {sending
+            ? (props.locale === 'zh' ? '发送中...' : 'Sending...')
+            : (props.locale === 'zh' ? '发送回复' : 'Send reply')}
+        </button>
+        <button className="rounded-full bg-stone-800 px-4 py-2.5 text-sm font-semibold text-stone-200" onClick={() => setEditingReply(true)}>
+          {t.editReply}
+        </button>
+        {totalPages > 1 && (
+          <button
+            className="rounded-full border border-emerald-300/30 px-4 py-2.5 text-sm font-semibold text-emerald-100"
+            onClick={() => setSlotPage((prev) => (prev + 1) % totalPages)}
+          >
+            {t.moreTimes} ({slotPage + 1}/{totalPages})
+          </button>
+        )}
       </div>
     </article>
   );
@@ -1159,6 +1326,7 @@ function OriginalEmail(props: { email: EmailMessage; locale: Locale }) {
           <DetailLine label={t.to}>{props.email.to.join(', ')}</DetailLine>
         </div>
         <DetailLine label={t.subject}>{props.email.subject}</DetailLine>
+        <DetailLine label={t.received}>{new Date(props.email.receivedAt).toLocaleString(props.locale === 'zh' ? 'zh-CN' : 'en-US', { dateStyle: 'full', timeStyle: 'short' })}</DetailLine>
         <div className="rounded-2xl bg-stone-950/70 p-4 leading-7 text-stone-200">
           {props.email.body}
         </div>
@@ -1361,12 +1529,13 @@ function ConnectionReadinessPanel(props: {
   onLogout: () => void;
 }) {
   const t = copy[props.locale];
-  const integrationLabels = integrationStatusLabels(demoIntegrationStatus, props.locale);
+  const isConnected = props.googleSyncStatus.state === 'synced' || props.googleSyncStatus.state === 'syncing' || props.googleSyncStatus.state === 'connected_not_synced';
+  const integrationLabels = integrationStatusLabels(isConnected ? liveGoogleIntegrationStatus : demoIntegrationStatus, props.locale);
   const alphaApiLabels = alphaApiStatusLabels(props.workspaceView, props.locale);
   const { googleSyncStatus, isSyncingGoogle, locale } = props;
 
   return (
-    <section className="space-y-4">
+    <section id="google" className="space-y-4 rounded-[2rem] border border-cyan-300/20 bg-[#0b1b17] p-4 shadow-2xl shadow-black/25 md:p-6">
       <PageHeader eyebrow={t.googleConnection} title={t.googleConnectionHeading} description={t.googleConnectionDescription} />
       <div className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
         <div className="flex flex-wrap gap-2">
@@ -1595,27 +1764,6 @@ function localizedAction(action: SuggestedAction, locale: Locale): LocalizedActi
   };
 }
 
-function localizedMeeting(suggestion: MeetingSuggestion, locale: Locale): LocalizedMeeting {
-  if (locale === 'zh') {
-    return {
-      title: '协调会议：下周会议',
-      requestSummary: 'Alex 想在下周二讨论产品 demo。',
-      participantLabel: 'Alex Rivera',
-      userTimeZone: 'Europe/Berlin',
-      participantTimeZone: 'America/New_York',
-      draftReply: '下周二你那边 9:00 对我来说合适。这个时间方便吗？',
-    };
-  }
-
-  return {
-    title: suggestion.title,
-    requestSummary: 'Alex wants to discuss the product demo next Tuesday.',
-    participantLabel: 'Alex Rivera',
-    userTimeZone: 'Europe/Berlin',
-    participantTimeZone: 'America/New_York',
-    draftReply: 'Tuesday 9:00 your time works well. Does that fit your side?',
-  };
-}
 
 function interpolate(template: string, count: number) {
   return template.replaceAll('{count}', String(count));

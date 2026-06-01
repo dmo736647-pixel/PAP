@@ -188,15 +188,14 @@ describe('PAP dashboard', () => {
     const meeting = within(meetingSection as HTMLElement);
 
     expect(meeting.getByText('Europe/Berlin')).toBeInTheDocument();
-    expect(meeting.getByText('America/New_York')).toBeInTheDocument();
+    expect(meeting.getAllByText('alex@studio.example').length).toBeGreaterThanOrEqual(1);
     expect(meeting.getByText('可直接发送的回复')).toBeInTheDocument();
-    expect(meeting.getByText('下周二你那边 9:00 对我来说合适。这个时间方便吗？')).toBeInTheDocument();
-    expect(meeting.getByRole('button', { name: '换一批时间' })).toBeInTheDocument();
+    expect(meeting.getAllByText(/Alex Rivera/).length).toBeGreaterThanOrEqual(1);
+    expect(meeting.getByRole('button', { name: /换一批时间/ })).toBeInTheDocument();
 
-    await user.click(meeting.getByRole('button', { name: '使用第一个时间' }));
+    await user.click(meeting.getByRole('button', { name: '发送回复' }));
     expect(screen.getByText('已选择会议时间')).toBeInTheDocument();
     expect(screen.getByText(/会议时间已选/)).toBeInTheDocument();
-    expect(within(meetingSection as HTMLElement).queryByText('协调会议：下周会议')).not.toBeInTheDocument();
     expect(within(meetingSection as HTMLElement).getByText('会议协调已处理完。')).toBeInTheDocument();
   });
 
