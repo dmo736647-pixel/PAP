@@ -708,9 +708,38 @@ export default function Dashboard() {
       totalEmails={totalEmailCount}
       pendingCount={pendingActions.length}
       handledCount={automaticActions.length}
+      googleSyncStatus={googleSyncStatus}
+      isSyncingGoogle={isSyncingGoogle}
+      onGoogleSync={handleGoogleSync}
+      onLogout={handleLogout}
     >
+      {/* 操作反馈通知 */}
       <OutcomeFeedbackBar locale={locale} events={persistedState.auditEvents} />
 
+      {/* 概览卡片 — 第一屏 */}
+      <section id="overview" className="rounded-[2rem] border border-emerald-300/15 bg-[radial-gradient(circle_at_top_left,#155e4f,transparent_34%),linear-gradient(135deg,#10211d,#050807)] p-5 shadow-2xl shadow-black/25">
+        <p className="text-sm font-medium uppercase tracking-[0.28em] text-emerald-200">
+          {isLiveGoogle ? (locale === 'zh' ? 'Google 真实数据' : 'Live Google Data') : t.demoWorkspace}
+        </p>
+        <p className="mt-3 text-2xl font-semibold text-stone-50">
+          {locale === 'zh'
+            ? `${totalEmailCount} 封邮件，PAP 帮你挡住了 ${automaticActions.length} 封`
+            : `${totalEmailCount} emails, PAP filtered ${automaticActions.length}`}
+        </p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/80">
+          {pendingActions.length > 0
+            ? (locale === 'zh' ? `只有 ${pendingActions.length} 件真正需要你看。` : `Only ${pendingActions.length} need your attention.`)
+            : (locale === 'zh' ? '全部处理完毕，没有需要你关注的事项。' : 'All clear — nothing needs your attention.')}
+        </p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard label={locale === 'zh' ? '总邮件' : 'Total'} value={totalEmailCount} />
+          <MetricCard label={locale === 'zh' ? '待确认' : 'Pending'} value={pendingActions.length} highlight={pendingActions.length > 0} />
+          <MetricCard label={locale === 'zh' ? '已处理' : 'Handled'} value={automaticActions.length} />
+          <MetricCard label={locale === 'zh' ? '会议' : 'Meetings'} value={meetingSuggestions.length} />
+        </div>
+      </section>
+
+      {/* 待确认 — 核心区块 */}
       <section id="pending" className="space-y-6 rounded-[2rem] border border-emerald-300/20 bg-[#0b1b17] p-4 shadow-2xl shadow-black/25 md:p-6">
         <PageHeader eyebrow={t.pending} title={t.pendingHeading} description={t.pendingDescription} />
         <div className="grid gap-3 rounded-3xl border border-emerald-300/15 bg-stone-950/50 p-4 text-sm text-stone-300 md:grid-cols-[1fr_auto] md:items-center">
@@ -750,55 +779,7 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <section id="today" className="space-y-6">
-        <PageHeader
-          eyebrow={t.todayBriefing}
-          title={pendingActions.length > 0 ? interpolate(t.todayHeading, pendingActions.length) : t.todayClearedHeading}
-          description={pendingActions.length > 0 ? t.todaySubheading : t.todayClearedNote}
-        />
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <SectionPanel title={t.pendingPreview} description={t.neverSend} priority>
-            <div className="space-y-4">
-              <p className="text-5xl font-semibold text-emerald-200">{pendingActions.length}</p>
-              {pendingActions.length > 0 ? (
-                <>
-                  <ol className="space-y-3">
-                    {pendingActions.slice(0, 2).map((action, index) => (
-                      <li key={action.id} className="flex gap-3 rounded-2xl bg-stone-950/60 p-4 text-stone-100 ring-1 ring-white/5">
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-300 text-sm font-semibold text-emerald-950">
-                          {index + 1}
-                        </span>
-                        <span>{localizedAction(action, locale).title}</span>
-                      </li>
-                    ))}
-                  </ol>
-                  <a className="inline-flex rounded-full bg-emerald-300 px-5 py-2.5 text-sm font-semibold text-emerald-950" href="#pending">
-                    {t.previewCta}
-                  </a>
-                </>
-              ) : (
-                <p className="rounded-2xl bg-stone-950/60 p-4 text-sm font-medium text-emerald-100 ring-1 ring-white/5">
-                  {t.todayClearedNote}
-                </p>
-              )}
-            </div>
-          </SectionPanel>
-          <div className="space-y-4">
-            <MetricGrid
-              metrics={[
-                { label: t.pendingMetric, value: pendingActions.length },
-                { label: t.handledMetric, value: automaticActions.length },
-                { label: t.meetingMetric, value: meetingSuggestions.length },
-                { label: t.importantMetric, value: briefing.importantEmails.length },
-              ]}
-            />
-            <SectionPanel title={t.topPriorities} description={interpolate(t.autoSummary, briefing.lowValueHandledCount)}>
-              <BriefingPriorityList priorities={briefing.topPriorities.slice(0, 3)} locale={locale} />
-            </SectionPanel>
-          </div>
-        </div>
-      </section>
-
+      {/* 会议协调 */}
       <section id="meetings" className="space-y-6">
         <PageHeader eyebrow={t.meeting} title={t.meetingHeading} description={t.meetingDescription} />
         <div className="grid gap-4 lg:grid-cols-2">
@@ -821,21 +802,25 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <ConnectionReadinessPanel
-        locale={locale}
-        workspaceView={workspaceView}
-        googleSyncStatus={googleSyncStatus}
-        isSyncingGoogle={isSyncingGoogle}
-        onGoogleSync={handleGoogleSync}
-        onLogout={handleLogout}
-      />
-
-      <section id="automated" className="space-y-6">
-        <PageHeader eyebrow={t.handled} title={t.handledHeading} description={t.handledDescription} />
-        <p className="rounded-2xl border border-emerald-300/10 bg-stone-950/50 px-4 py-3 text-sm text-emerald-100">
-          {t.handledTrust}
-        </p>
-        <div className="grid gap-4 lg:grid-cols-2">
+      {/* 已处理 — 默认折叠 */}
+      <details id="automated" className="group rounded-[2rem] border border-emerald-300/10 bg-[#0a1512] p-4 shadow-lg shadow-black/15 md:p-6">
+        <summary className="flex cursor-pointer items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-[0.25em] text-emerald-300">{t.handled}</p>
+            <p className="mt-2 text-xl font-semibold text-stone-50">
+              {locale === 'zh'
+                ? `PAP 已自动处理 ${automaticActions.length} 个低价值事项`
+                : `PAP auto-handled ${automaticActions.length} low-value items`}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full bg-emerald-950 px-3 py-1 text-xs font-medium text-emerald-200 group-open:hidden">
+            {locale === 'zh' ? '展开' : 'Expand'}
+          </span>
+          <span className="shrink-0 rounded-full bg-emerald-950 px-3 py-1 text-xs font-medium text-emerald-200 hidden group-open:inline">
+            {locale === 'zh' ? '收起' : 'Collapse'}
+          </span>
+        </summary>
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
           {automaticActions.map((action) => (
             <AutomationLogCard
               key={action.id}
@@ -847,18 +832,32 @@ export default function Dashboard() {
             />
           ))}
         </div>
-      </section>
+      </details>
 
-      <ActivityPanels locale={locale} events={persistedState.auditEvents} />
-
-      <section id="boundaries" className="space-y-6">
-        <PageHeader eyebrow={t.boundaries} title={t.boundaries} description={t.boundariesDescription} />
-        <AutomationBoundarySection
-          locale={locale}
-          preferences={persistedState.preferences}
-          onChange={updatePreferences}
-        />
-      </section>
+      {/* 自动化设置 — 默认折叠 */}
+      <details id="boundaries" className="group rounded-[2rem] border border-emerald-300/10 bg-[#0a1512] p-4 shadow-lg shadow-black/15 md:p-6">
+        <summary className="flex cursor-pointer items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-[0.25em] text-emerald-300">{t.boundaries}</p>
+            <p className="mt-2 text-xl font-semibold text-stone-50">
+              {locale === 'zh' ? '自动化规则和边界' : 'Automation rules and boundaries'}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full bg-emerald-950 px-3 py-1 text-xs font-medium text-emerald-200 group-open:hidden">
+            {locale === 'zh' ? '展开' : 'Expand'}
+          </span>
+          <span className="shrink-0 rounded-full bg-emerald-950 px-3 py-1 text-xs font-medium text-emerald-200 hidden group-open:inline">
+            {locale === 'zh' ? '收起' : 'Collapse'}
+          </span>
+        </summary>
+        <div className="mt-5">
+          <AutomationBoundarySection
+            locale={locale}
+            preferences={persistedState.preferences}
+            onChange={updatePreferences}
+          />
+        </div>
+      </details>
     </AppShell>
   );
 }
@@ -871,15 +870,18 @@ function AppShell(props: {
   totalEmails?: number;
   pendingCount?: number;
   handledCount?: number;
+  googleSyncStatus?: GoogleSyncStatusResponse;
+  isSyncingGoogle?: boolean;
+  onGoogleSync?: () => void;
+  onLogout?: () => void;
   children: ReactNode;
 }) {
   const t = copy[props.locale];
   const navItems = [
-    { href: '#today', label: t.navToday },
+    { href: '#overview', label: props.locale === 'zh' ? '概览' : 'Overview' },
     { href: '#pending', label: t.navPending },
     { href: '#meetings', label: t.navMeetings },
     { href: '#automated', label: t.navAutomated },
-    { href: '#google', label: t.navGoogle },
     { href: '#boundaries', label: t.navBoundaries },
   ];
 
@@ -929,7 +931,13 @@ function AppShell(props: {
           </div>
         </aside>
         <div className="space-y-8">
-          <SyncStatus locale={props.locale} isLive={props.isLive} totalEmails={props.totalEmails} pendingCount={props.pendingCount} handledCount={props.handledCount} />
+          <GoogleBanner
+            locale={props.locale}
+            googleSyncStatus={props.googleSyncStatus ?? { state: 'logged_out', hasWorkspace: false }}
+            isSyncingGoogle={props.isSyncingGoogle ?? false}
+            onGoogleSync={props.onGoogleSync ?? (() => {})}
+            onLogout={props.onLogout ?? (() => {})}
+          />
           {props.children}
         </div>
       </div>
@@ -937,42 +945,72 @@ function AppShell(props: {
   );
 }
 
-function SyncStatus(props: { locale: Locale; isLive?: boolean; totalEmails?: number; pendingCount?: number; handledCount?: number }) {
-  const t = copy[props.locale];
-  const integrationLabels = integrationStatusLabels(
-    props.isLive ? liveGoogleIntegrationStatus : demoIntegrationStatus,
-    props.locale,
-  );
+function GoogleBanner(props: {
+  locale: Locale;
+  googleSyncStatus: GoogleSyncStatusResponse;
+  isSyncingGoogle: boolean;
+  onGoogleSync: () => void;
+  onLogout: () => void;
+}) {
+  const { locale, googleSyncStatus, isSyncingGoogle } = props;
+  const isConnected = googleSyncStatus.state !== 'logged_out' && googleSyncStatus.state !== 'not_invited';
 
-  const eyebrow = props.isLive
-    ? (props.locale === 'zh' ? 'Google 真实数据' : 'Live Google Data')
-    : t.demoWorkspace;
-  const heading = props.isLive
-    ? (props.locale === 'zh'
-      ? `${props.totalEmails ?? 0} 封邮件，${props.pendingCount ?? 0} 件需要你看`
-      : `${props.totalEmails ?? 0} emails, ${props.pendingCount ?? 0} need your attention`)
-    : t.processed;
-  const detail = props.isLive
-    ? (props.locale === 'zh'
-      ? `${props.handledCount ?? 0} 个低风险事项已自动处理；待确认事项在下方。`
-      : `${props.handledCount ?? 0} low-risk items handled automatically; pending items are below.`)
-    : t.statusDetail;
+  if (isConnected) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-300/15 bg-[#0d1714] px-5 py-3">
+        <div className="flex items-center gap-3">
+          <span className="h-2 w-2 rounded-full bg-emerald-400" />
+          <p className="text-sm text-stone-300">
+            {locale === 'zh' ? '已连接 Google' : 'Google connected'}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            className="rounded-full bg-cyan-300 px-4 py-1.5 text-xs font-semibold text-slate-950 disabled:opacity-60"
+            onClick={props.onGoogleSync}
+            disabled={isSyncingGoogle}
+          >
+            {isSyncingGoogle
+              ? (locale === 'zh' ? '同步中...' : 'Syncing...')
+              : (locale === 'zh' ? '重新同步' : 'Resync')}
+          </button>
+          <button
+            className="rounded-full bg-stone-800 px-4 py-1.5 text-xs font-semibold text-stone-200"
+            onClick={props.onLogout}
+          >
+            {locale === 'zh' ? '退出' : 'Log out'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <header className="rounded-[2rem] border border-emerald-300/15 bg-[radial-gradient(circle_at_top_left,#155e4f,transparent_34%),linear-gradient(135deg,#10211d,#050807)] p-5 shadow-2xl shadow-black/25">
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-cyan-300/20 bg-[#0d1714] px-5 py-4">
       <div>
-        <p className="text-sm font-medium uppercase tracking-[0.28em] text-emerald-200">{eyebrow}</p>
-        <p className="mt-3 text-2xl font-semibold text-stone-50">{heading}</p>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/80">{detail}</p>
+        <p className="text-sm font-semibold text-stone-100">
+          {locale === 'zh' ? '连接 Google，用真实邮件体验 PAP' : 'Connect Google to try PAP with your real email'}
+        </p>
+        <p className="mt-1 text-xs text-stone-400">
+          {locale === 'zh' ? '只读访问 Gmail 和 Calendar，不会发送或修改任何内容' : 'Read-only access to Gmail and Calendar — nothing will be sent or modified'}
+        </p>
       </div>
-      <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-        {integrationLabels.map((label) => (
-          <p key={label} className="rounded-full border border-emerald-300/20 bg-emerald-950/35 px-4 py-2 text-sm font-semibold text-emerald-100">
-            {label}
-          </p>
-        ))}
-      </div>
-    </header>
+      <a
+        href="/api/auth/google/start"
+        className="shrink-0 rounded-full bg-cyan-300 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"
+      >
+        {locale === 'zh' ? '使用 Google 登录' : 'Sign in with Google'}
+      </a>
+    </div>
+  );
+}
+
+function MetricCard(props: { label: string; value: number; highlight?: boolean }) {
+  return (
+    <div className={`rounded-2xl p-4 ${props.highlight ? 'border border-amber-300/30 bg-amber-950/20' : 'border border-emerald-300/10 bg-[#0d1714]'}`}>
+      <p className="text-sm text-stone-400">{props.label}</p>
+      <p className={`mt-1 text-3xl font-semibold ${props.highlight ? 'text-amber-200' : 'text-emerald-200'}`}>{props.value}</p>
+    </div>
   );
 }
 
@@ -1177,10 +1215,12 @@ function MeetingSuggestionCard(props: {
         });
       }
       setSent(true);
-      const title = activeSlot
-        ? `${s.title} · ${formatTimeInZone(activeSlot.startsAt, props.locale, s.userTimeZone)}`
-        : s.title;
-      props.onUseSlot(title);
+      if (props.isLive) {
+        const title = activeSlot
+          ? `${s.title} · ${formatTimeInZone(activeSlot.startsAt, props.locale, s.userTimeZone)}`
+          : s.title;
+        props.onUseSlot(title);
+      }
     } catch (error) {
       setSendError(error instanceof Error ? error.message : 'Send failed');
     } finally {

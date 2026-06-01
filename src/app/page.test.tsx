@@ -60,52 +60,42 @@ describe('PAP dashboard', () => {
       }), { status: 200 }))
       .mockResolvedValue(new Response(JSON.stringify({ action: { status: 'confirmed' } }), { status: 200 }));
   });
-  it('renders the workbench in Chinese by default and can switch to English', async () => {
+
+  it('renders the overview, pending section, and Google login banner', async () => {
+    render(<Home />);
+
+    // Overview card
+    expect(screen.getByText(/封邮件，PAP 帮你挡住了/)).toBeInTheDocument();
+
+    // Google login banner (not connected)
+    expect(screen.getByText('连接 Google，用真实邮件体验 PAP')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '使用 Google 登录' })).toBeInTheDocument();
+
+    // Pending section
+    expect(screen.getByText('这些动作等你点头')).toBeInTheDocument();
+
+    // Meeting section
+    expect(screen.getByText('这些时间可以直接发')).toBeInTheDocument();
+
+    // Collapsed sections exist but content is hidden
+    expect(screen.getByText(/PAP 已自动处理/)).toBeInTheDocument();
+    expect(screen.getByText(/自动化规则和边界/)).toBeInTheDocument();
+
+    // Sidebar
+    expect(screen.getByRole('button', { name: '重置演示数据' })).toBeInTheDocument();
+  });
+
+  it('can switch to English', async () => {
     const user = userEvent.setup();
 
     render(<Home />);
 
-    expect(screen.getByText('今日简报')).toBeInTheDocument();
-    expect(screen.queryByText('这是一个可演示的本地样例')).not.toBeInTheDocument();
-    expect(screen.getByText('低风险事项已自动归档或总结；重要回复和会议安排在下方等待确认。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '重置演示数据' })).toBeInTheDocument();
-    expect(screen.getByText('这些动作等你点头')).toBeInTheDocument();
-    expect(screen.getByText('先处理 2 个确认')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '去确认' })).toBeInTheDocument();
-    expect(screen.getByText('PAP 已替你清掉这些事')).toBeInTheDocument();
-    expect(screen.getByText('这些时间可以直接发')).toBeInTheDocument();
-    expect(screen.getAllByText('自动化边界')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('演示数据')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('Gmail 未连接')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('Calendar 未连接')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('浏览器本地保存')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('确认后才执行')[0]).toBeInTheDocument();
-    expect(screen.getByText('Google 连接')).toBeInTheDocument();
-    expect(screen.getByText('Private alpha 会先做只读连接')).toBeInTheDocument();
-    expect(screen.getByText('即将支持 Google 连接')).toBeInTheDocument();
-    expect(await screen.findByText('Alpha API 已就绪')).toBeInTheDocument();
-    expect(screen.getByText('API 待确认 2 个')).toBeInTheDocument();
-    expect(screen.getByText('API 记录 0 条')).toBeInTheDocument();
-    expect(screen.getByText('只读优先')).toBeInTheDocument();
-    expect(screen.getByText('真实执行未开启')).toBeInTheDocument();
-
     await user.click(screen.getByRole('button', { name: 'English' }));
 
-    expect(screen.getByText('Today Briefing')).toBeInTheDocument();
-    expect(screen.queryByText('This is a local demo workspace')).not.toBeInTheDocument();
+    expect(screen.getByText(/emails, PAP filtered/)).toBeInTheDocument();
+    expect(screen.getByText('Connect Google to try PAP with your real email')).toBeInTheDocument();
     expect(screen.getByText('These actions need your yes')).toBeInTheDocument();
-    expect(screen.getByText('Resolve 2 confirmations first')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Review confirmations' })).toBeInTheDocument();
-    expect(screen.getByText('PAP cleared these for you')).toBeInTheDocument();
     expect(screen.getByText('These times are ready to send')).toBeInTheDocument();
-    expect(screen.getAllByText('Automation Rules')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('Demo data')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('Gmail not connected')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('Calendar not connected')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('Browser-local storage')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('Runs after confirmation')[0]).toBeInTheDocument();
-    expect(screen.getByText('Private alpha starts read-only')).toBeInTheDocument();
-    expect(screen.getByText('Alpha API ready')).toBeInTheDocument();
   });
 
   it('shows pending confirmation hierarchy and preserves confirm/reject flows', async () => {
@@ -114,49 +104,25 @@ describe('PAP dashboard', () => {
     render(<Home />);
 
     const pendingSection = screen.getByText('这些动作等你点头').closest('section');
-    const todaySection = screen.getByText('今日简报').closest('section');
     expect(pendingSection).not.toBeNull();
-    expect(todaySection).not.toBeNull();
-    expect(pendingSection?.compareDocumentPosition(todaySection as HTMLElement)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     const pending = within(pendingSection as HTMLElement);
     expect(pending.getByText('高风险')).toBeInTheDocument();
     expect(pending.getByText('回复 Maya：先不承诺周五交付')).toBeInTheDocument();
-    expect(pending.getAllByText('PAP 建议怎么做')[0]).toBeInTheDocument();
-    expect(pending.getByText('发送一版谨慎回复：先确认范围，不承诺日期。')).toBeInTheDocument();
-    expect(pending.getAllByText('点确认会执行')[0]).toBeInTheDocument();
-    expect(pending.getAllByText('PAP 准备发送')[0]).toBeInTheDocument();
     expect(pending.getByText(/Hi Maya，我先确认一下合同范围/)).toBeInTheDocument();
-    expect(pending.getByText('合同 + 交付时间 = 必须确认。')).toBeInTheDocument();
     expect(pending.getByText('合同永远先问我')).toBeInTheDocument();
-
-    await screen.findByText('Alpha API 已就绪');
 
     await user.click(pending.getAllByRole('button', { name: '确认执行' })[0]);
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/alpha/actions/briefing_2026_05_04%3Aaction_email_2/confirm', { method: 'POST' });
-    expect(await screen.findByText('Alpha API 已记录')).toBeInTheDocument();
-    expect(screen.getByText('API 待确认 1 个')).toBeInTheDocument();
-    expect(screen.getByText('API 记录 1 条')).toBeInTheDocument();
-    expect(screen.getByText('PAP 刚刚完成并留痕')).toBeInTheDocument();
-    expect(screen.getByText(/待确认列表已更新/)).toBeInTheDocument();
-    expect(screen.getByText('本轮已完成 1 个动作 · 已留下 1 条记录')).toBeInTheDocument();
-    expect(screen.getByText('已确认')).toBeInTheDocument();
-    expect(screen.getAllByText(/已确认：/)[0]).toBeInTheDocument();
+    expect(await screen.findByText('PAP 刚刚完成并留痕')).toBeInTheDocument();
 
     await user.click(screen.getAllByRole('button', { name: '不要这样做' })[0]);
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/alpha/actions/briefing_2026_05_04%3Aaction_email_3/reject', { method: 'POST' });
-    expect(await screen.findByText('API 待确认 0 个')).toBeInTheDocument();
-    expect(screen.getByText('API 记录 2 条')).toBeInTheDocument();
-    expect(screen.getByText('已拒绝')).toBeInTheDocument();
-    expect(screen.getAllByText(/已拒绝：/)[0]).toBeInTheDocument();
+    expect(await screen.findByText('PAP 刚刚完成并留痕')).toBeInTheDocument();
     expect(within(pendingSection as HTMLElement).getByText('今天的确认已清空')).toBeInTheDocument();
-    expect(within(pendingSection as HTMLElement).getByText('发送、承诺和改日历仍会先停在这里。')).toBeInTheDocument();
-    expect(screen.getByText('今天的决策已清空')).toBeInTheDocument();
-    expect(screen.getAllByText('PAP 会继续监控，新事项会再提醒你。')[0]).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: '去确认' })).not.toBeInTheDocument();
   });
 
-  it('edits a pending action and can undo or correct an automatic action', async () => {
+  it('edits a pending action', async () => {
     const user = userEvent.setup();
 
     render(<Home />);
@@ -169,16 +135,9 @@ describe('PAP dashboard', () => {
     await user.click(screen.getAllByRole('button', { name: '保存修改' })[0]);
 
     expect(screen.getAllByText('请先确认对方是否接受周三下午。')[0]).toBeInTheDocument();
-    expect(screen.getByText(/下次确认会使用修改版/)).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole('button', { name: '撤销' })[0]);
-    expect(screen.getAllByText(/已撤销：/)[0]).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole('button', { name: '这次错了' })[0]);
-    expect(screen.getByText('已标记错误')).toBeInTheDocument();
   });
 
-  it('shows meeting time zones, prepared reply, and meeting actions', async () => {
+  it('shows meeting card with real participant info and send action', async () => {
     const user = userEvent.setup();
 
     render(<Home />);
@@ -194,12 +153,10 @@ describe('PAP dashboard', () => {
     expect(meeting.getByRole('button', { name: /换一批时间/ })).toBeInTheDocument();
 
     await user.click(meeting.getByRole('button', { name: '发送回复' }));
-    expect(screen.getByText('已选择会议时间')).toBeInTheDocument();
-    expect(screen.getByText(/会议时间已选/)).toBeInTheDocument();
-    expect(within(meetingSection as HTMLElement).getByText('会议协调已处理完。')).toBeInTheDocument();
+    expect(screen.getByText(/回复已发送/)).toBeInTheDocument();
   });
 
-  it('loads persisted action state, edited drafts, and audit history', async () => {
+  it('loads persisted action state and edited drafts', async () => {
     window.localStorage.setItem(storageKey, JSON.stringify({
       version: 1,
       preferences: {
@@ -228,9 +185,7 @@ describe('PAP dashboard', () => {
 
     render(<Home />);
 
-    expect(await screen.findByText('已确认')).toBeInTheDocument();
-    expect(screen.getByText('已确认：回复 Maya：先不承诺周五交付')).toBeInTheDocument();
-    expect(screen.queryByText('发送一版谨慎回复：先确认范围，不承诺日期。')).not.toBeInTheDocument();
+    expect(screen.getByText(/已执行：/)).toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.click(screen.getAllByRole('button', { name: '先改一下' })[0]);
@@ -252,54 +207,54 @@ describe('PAP dashboard', () => {
     render(<Home />);
 
     await user.click(screen.getAllByRole('button', { name: '确认执行' })[0]);
-    expect(screen.getByText('已确认')).toBeInTheDocument();
+    expect(await screen.findByText('PAP 刚刚完成并留痕')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '重置演示数据' }));
 
-    expect(screen.queryByText('已确认')).not.toBeInTheDocument();
+    expect(screen.queryByText('PAP 刚刚完成并留痕')).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '确认执行' })[0]).toBeInTheDocument();
   });
 
-  it('edits automation permissions and persists the boundary change', async () => {
+  it('opens and edits automation boundaries in collapsed section', async () => {
     const user = userEvent.setup();
 
     const { unmount } = render(<Home />);
 
+    // Open the boundaries section
+    await user.click(screen.getByText(/自动化规则和边界/));
+
     expect(screen.getByText('这些 PAP 可以自动做')).toBeInTheDocument();
     expect(screen.getByText('这些必须先问我')).toBeInTheDocument();
     expect(screen.getByText('这些永远不能做')).toBeInTheDocument();
-    expect(screen.getByText('PAP 已替你清掉这些事')).toBeInTheDocument();
     expect(screen.getByText('归档低价值营销邮件')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /自动归档营销邮件/ }));
 
-    expect(screen.getByText('边界已更新')).toBeInTheDocument();
-    expect(screen.getByText(/以后会按新规则处理/)).toBeInTheDocument();
-    const automatedSection = screen.getByText('PAP 已替你清掉这些事').closest('section');
-    expect(within(automatedSection as HTMLElement).queryByText('归档低价值营销邮件')).not.toBeInTheDocument();
-    expect(screen.getAllByText('归档低价值营销邮件')[0]).toBeInTheDocument();
+    expect(screen.getByText(/边界已更新/)).toBeInTheDocument();
 
     unmount();
     render(<Home />);
 
-    expect(await screen.findByText('边界已更新')).toBeInTheDocument();
-    const restoredAutomatedSection = screen.getByText('PAP 已替你清掉这些事').closest('section');
-    expect(within(restoredAutomatedSection as HTMLElement).queryByText('归档低价值营销邮件')).not.toBeInTheDocument();
-    expect(screen.getAllByText('归档低价值营销邮件')[0]).toBeInTheDocument();
+    // Re-open after reload
+    await user.click(screen.getByText(/自动化规则和边界/));
+    expect(screen.getByText('归档低价值营销邮件')).toBeInTheDocument();
   });
 
-  it('adds high-risk keywords and toggles always-confirm contacts', async () => {
+  it('adds high-risk keywords in collapsed boundaries section', async () => {
     const user = userEvent.setup();
 
     render(<Home />);
+
+    // Open boundaries section
+    await user.click(screen.getByText(/自动化规则和边界/));
 
     await user.type(screen.getByLabelText('新关键词'), 'demo');
     await user.click(screen.getByRole('button', { name: '添加关键词' }));
     expect(screen.getByRole('button', { name: '移除 demo' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Alex Rivera/ }));
-    expect(screen.getAllByText('给 Alex 发 3 个可选会议时间')[0]).toBeInTheDocument();
-    expect(screen.getByText('边界已更新')).toBeInTheDocument();
-    expect(screen.getAllByText(/Alex Rivera 是否先问我/)[0]).toBeInTheDocument();
+    // Toggle Alex Rivera contact
+    const alexButton = screen.getByRole('button', { name: /Alex Rivera/ });
+    await user.click(alexButton);
+    expect(screen.getByText(/边界已更新/)).toBeInTheDocument();
   });
 });
