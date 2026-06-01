@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
   const stateCookie = request.cookies.get('pap_oauth_state')?.value;
 
   if (!code || !state || !stateCookie || state !== stateCookie) {
+    console.error('[Google OAuth Callback] State mismatch', { hasCode: !!code, hasState: !!state, hasCookie: !!stateCookie });
     const response = redirectTo('failed');
     response.cookies.delete('pap_oauth_state');
     return response;
@@ -23,12 +24,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const config = readGoogleOAuthConfig();
+    console.log('[Google OAuth] Exchanging code for tokens...');
     const tokens = await exchangeGoogleCodeForTokens({ code, config });
+    console.log('[Google OAuth] Tokens received, fetching profile...');
     const profile = await fetchGoogleProfile({ accessToken: tokens.access_token });
     const email = normalizeEmail(profile.email);
+    console.log('[Google OAuth] Profile email:', email);
     const invite = await prisma.alphaInvite.findUnique({ where: { email } });
+    console.log('[Google OAuth] Invite found:', invite);
 
     if (!canAccessPrivateAlpha(invite)) {
+      console.warn('[Google OAuth] User not invited:', email);
       const response = redirectTo('not-invited');
       response.cookies.delete('pap_oauth_state');
       return response;
@@ -97,7 +103,8 @@ export async function GET(request: NextRequest) {
     response.cookies.delete('pap_oauth_state');
 
     return response;
-  } catch {
+  } catch (error) {
+    console.error('[Google OAuth Callback Error]', error);
     const response = redirectTo('failed');
     response.cookies.delete('pap_oauth_state');
     return response;

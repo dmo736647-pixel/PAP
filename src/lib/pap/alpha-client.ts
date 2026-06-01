@@ -72,3 +72,20 @@ export function logoutPapSession() {
     method: 'POST',
   });
 }
+
+export type SendReplyResponse =
+  | { ok: true; messageId: string }
+  | { error: string };
+
+export function sendMeetingReply(input: {
+  threadId: string;
+  to: string;
+  subject: string;
+  body: string;
+}) {
+  return fetchJson<SendReplyResponse>('/api/google/send-reply', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}

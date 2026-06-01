@@ -1,3 +1,4 @@
+import { proxyFetch } from './proxy-fetch';
 import { normalizeEmail } from './private-alpha-access';
 
 export const googleOAuthScopes = [
@@ -5,6 +6,7 @@ export const googleOAuthScopes = [
   'email',
   'profile',
   'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/calendar.readonly',
 ];
 
@@ -88,7 +90,7 @@ export async function fetchGoogleProfile(input: {
   accessToken: string;
   fetchImpl?: typeof fetch;
 }): Promise<GoogleProfile> {
-  const fetcher = input.fetchImpl ?? fetch;
+  const fetcher = input.fetchImpl ?? proxyFetch;
   const response = await fetcher('https://www.googleapis.com/oauth2/v3/userinfo', {
     headers: { authorization: `Bearer ${input.accessToken}` },
   });
@@ -105,7 +107,7 @@ async function postGoogleTokenRequest(input: {
   errorPrefix: string;
   fetchImpl?: typeof fetch;
 }): Promise<Response> {
-  const fetcher = input.fetchImpl ?? fetch;
+  const fetcher = input.fetchImpl ?? proxyFetch;
   const response = await fetcher('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },

@@ -1,3 +1,5 @@
+import { proxyFetch } from './proxy-fetch';
+
 export type GoogleEmailSnapshotInput = {
   googleMessageId: string;
   threadId: string;
@@ -28,7 +30,7 @@ export type GoogleReadOnlyClient = {
 
 export const googleRestClient: GoogleReadOnlyClient = {
   async listRecentMessages(accessToken, maxResults) {
-    const listResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${maxResults}`, {
+    const listResponse = await proxyFetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${maxResults}`, {
       headers: { authorization: `Bearer ${accessToken}` },
     });
 
@@ -40,7 +42,7 @@ export const googleRestClient: GoogleReadOnlyClient = {
     const messages = listPayload.messages ?? [];
 
     return Promise.all(messages.slice(0, maxResults).map(async (message) => {
-      const detailResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`, {
+      const detailResponse = await proxyFetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`, {
         headers: { authorization: `Bearer ${accessToken}` },
       });
 
@@ -80,7 +82,7 @@ export const googleRestClient: GoogleReadOnlyClient = {
     url.searchParams.set('timeMax', input.timeMax.toISOString());
     url.searchParams.set('fields', 'items(id,summary,description,start(date,dateTime),end(date,dateTime),attendees(email))');
 
-    const response = await fetch(url, {
+    const response = await proxyFetch(url.toString(), {
       headers: { authorization: `Bearer ${accessToken}` },
     });
 
@@ -144,4 +146,45 @@ function splitAddresses(value: string): string[] {
 function parseDateHeader(value: string): Date {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+export async function sendGmailReply(input: {
+  accessToken: string;
+  threadId: string;
+  to: string;
+  subject: string;
+  body: string;
+}): Promise<{ messageId: string }> {
+  // Construct RFC 2822 email
+  const emailLines = [
+    `To: ${input.to}`,
+    `Subject: Re: ${input.subject.replace(/^Re:\s*/i, '')}`,
+    `Content-Type: text/plain; charset=utf-8`,
+    `In-Reply-To: ${input.threadId}`,
+    `References: ${input.threadId}`,
+    '',
+    input.body,
+  ];
+  const rawEmail = emailLines.join('\r\n');
+  const encodedEmail = Buffer.from(rawEmail).toString('base64url');
+
+  const response = await proxyFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${input.accessToken}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      raw: encodedEmail,
+      threadId: input.threadId,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Gmail send failed: ${response.status} ${errorBody}`);
+  }
+
+  const result = (await response.json()) as { id?: string };
+  return { messageId: result.id ?? '' };
 }
