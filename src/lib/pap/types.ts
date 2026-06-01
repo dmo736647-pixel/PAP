@@ -7,6 +7,9 @@ export type EmailCategory =
   | 'notification'
   | 'marketing'
   | 'receipt'
+  | 'verification_code'
+  | 'social'
+  | 'spam'
   | 'unknown';
 
 export type SuggestedActionType =
@@ -98,6 +101,10 @@ export interface SuggestedAction {
 export interface MeetingSuggestion {
   emailId: string;
   title: string;
+  participantName: string;
+  participantEmail: string;
+  userTimeZone: string;
+  draftReply: string;
   proposedSlots: Array<{
     startsAt: string;
     endsAt: string;
