@@ -41,37 +41,48 @@ export const googleRestClient: GoogleReadOnlyClient = {
     const listPayload = await listResponse.json() as { messages?: Array<{ id: string; threadId?: string }> };
     const messages = listPayload.messages ?? [];
 
-    return Promise.all(messages.slice(0, maxResults).map(async (message) => {
-      const detailResponse = await proxyFetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`, {
-        headers: { authorization: `Bearer ${accessToken}` },
-      });
+    // Fetch message details in batches of 10 to avoid rate limits
+    const batchSize = 10;
+    const sliced = messages.slice(0, maxResults);
+    const results: GoogleEmailSnapshotInput[] = [];
 
-      if (!detailResponse.ok) {
-        throw new Error(`Gmail message fetch failed: ${detailResponse.status}`);
-      }
+    for (let i = 0; i < sliced.length; i += batchSize) {
+      const batch = sliced.slice(i, i + batchSize);
+      const batchResults = await Promise.all(batch.map(async (message) => {
+        const detailResponse = await proxyFetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`, {
+          headers: { authorization: `Bearer ${accessToken}` },
+        });
 
-      const detail = await detailResponse.json() as {
-        id: string;
-        threadId?: string;
-        snippet?: string;
-        labelIds?: string[];
-        payload?: { headers?: Array<{ name: string; value: string }> };
-      };
-      const headers = detail.payload?.headers ?? [];
-      const header = (name: string) => headers.find((item) => item.name.toLowerCase() === name.toLowerCase())?.value ?? '';
+        if (!detailResponse.ok) {
+          throw new Error(`Gmail message fetch failed: ${detailResponse.status}`);
+        }
 
-      return {
-        googleMessageId: detail.id,
-        threadId: detail.threadId ?? message.threadId ?? detail.id,
-        from: header('From'),
-        to: splitAddresses(header('To')),
-        subject: header('Subject'),
-        snippet: detail.snippet ?? '',
-        receivedAt: parseDateHeader(header('Date')),
-        labels: detail.labelIds ?? [],
-        rawMetadataJson: detail,
-      };
-    }));
+        const detail = await detailResponse.json() as {
+          id: string;
+          threadId?: string;
+          snippet?: string;
+          labelIds?: string[];
+          payload?: { headers?: Array<{ name: string; value: string }> };
+        };
+        const headers = detail.payload?.headers ?? [];
+        const header = (name: string) => headers.find((item) => item.name.toLowerCase() === name.toLowerCase())?.value ?? '';
+
+        return {
+          googleMessageId: detail.id,
+          threadId: detail.threadId ?? message.threadId ?? detail.id,
+          from: header('From'),
+          to: splitAddresses(header('To')),
+          subject: header('Subject'),
+          snippet: detail.snippet ?? '',
+          receivedAt: parseDateHeader(header('Date')),
+          labels: detail.labelIds ?? [],
+          rawMetadataJson: detail,
+        };
+      }));
+      results.push(...batchResults);
+    }
+
+    return results;
   },
 
   async listUpcomingEvents(accessToken, input) {

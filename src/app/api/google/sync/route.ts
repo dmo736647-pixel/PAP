@@ -4,6 +4,8 @@ import { prisma } from '@/lib/pap/prisma';
 import { canAccessPrivateAlpha } from '@/lib/pap/private-alpha-access';
 import { papSessionCookieName, parseSessionCookieValue } from '@/lib/pap/session';
 
+export const maxDuration = 10;
+
 export async function POST(request: NextRequest) {
   const cookie = request.cookies.get(papSessionCookieName)?.value;
   const session = cookie ? parseSessionCookieValue(cookie) : null;

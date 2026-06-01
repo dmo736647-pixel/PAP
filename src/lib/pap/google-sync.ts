@@ -92,7 +92,7 @@ export async function syncGoogleSnapshots(input: {
     timeMax.setUTCDate(timeMax.getUTCDate() + 14);
 
     console.log('[Sync] Fetching Gmail messages...');
-    const emailSnapshots = await googleClient.listRecentMessages(accessToken, 10);
+    const emailSnapshots = await googleClient.listRecentMessages(accessToken, 50);
     console.log('[Sync] Got', emailSnapshots.length, 'emails');
     console.log('[Sync] Fetching Calendar events...');
     const calendarSnapshots = await googleClient.listUpcomingEvents(accessToken, {
