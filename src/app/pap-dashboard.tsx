@@ -906,12 +906,14 @@ function AppShell(props: {
               ))}
             </nav>
             <div className="mt-auto space-y-4 pt-6">
-              <button
-                className="w-full rounded-full border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-300 hover:text-amber-950"
-                onClick={props.onResetDemo}
-              >
-                {t.resetDemo}
-              </button>
+              {!props.isLive && (
+                <button
+                  className="w-full rounded-full border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-300 hover:text-amber-950"
+                  onClick={props.onResetDemo}
+                >
+                  {t.resetDemo}
+                </button>
+              )}
               <div>
                 <p className="mb-2 text-xs uppercase tracking-[0.2em] text-stone-500">{t.language}</p>
                 <div className="flex rounded-full border border-emerald-300/20 bg-black/25 p-1 text-sm">
