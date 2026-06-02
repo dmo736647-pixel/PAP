@@ -1147,14 +1147,26 @@ function PendingConfirmationCard(props: {
 }
 
 function extractPlatformName(from: string): string {
-  // "Reddit <noreply@redditmail.com>" → "Reddit"
-  // "Google <no-reply@accounts.google.com>" → "Google"
-  // "Cursor <hi@cursor.com>" → "Cursor"
-  const match = from.match(/^(.*?)\s*<.*>$/);
-  if (match) return match[1].trim();
-  // "noreply@redditmail.com" → "redditmail"
-  const local = from.split('@')[0] ?? from;
-  return local.replace(/noreply|no-reply|donotreply|notifications?|mail|support/i, '').trim() || from;
+  // 1. 如果有显示名，直接用: "Reddit <noreply@redditmail.com>" → "Reddit"
+  const displayMatch = from.match(/^(.*?)\s*<.*>$/);
+  if (displayMatch) {
+    const name = displayMatch[1].trim();
+    // 排除纯邮箱前缀作为显示名的情况
+    if (!name.includes('@') && name.length > 1) return name;
+  }
+
+  // 2. 从域名提取: "noreply@supabase.com" → "Supabase"
+  const emailMatch = from.match(/@([a-zA-Z0-9.-]+)/);
+  if (emailMatch) {
+    const domain = emailMatch[1];
+    // 取主域名: "accounts.google.com" → "google", "noreply.redditmail.com" → "redditmail"
+    const parts = domain.replace(/\.(com|org|net|io|co|dev|app|ai|xyz|info|me)$/, '').split('.');
+    const mainDomain = parts[parts.length - 1] ?? domain;
+    // 首字母大写
+    return mainDomain.charAt(0).toUpperCase() + mainDomain.slice(1);
+  }
+
+  return from;
 }
 
 function actionRationaleZh(action: SuggestedAction): string {
