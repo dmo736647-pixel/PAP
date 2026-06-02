@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { encryptSecret } from '@/lib/pap/crypto';
 import { exchangeGoogleCodeForTokens, fetchGoogleProfile, readGoogleOAuthConfig } from '@/lib/pap/google-oauth';
 import { prisma } from '@/lib/pap/prisma';
-import { canAccessPrivateAlpha, normalizeEmail } from '@/lib/pap/private-alpha-access';
+import { normalizeEmail } from '@/lib/pap/private-alpha-access';
 import { createSessionCookieValue, papSessionCookieName } from '@/lib/pap/session';
 
 function redirectTo(auth: 'connected' | 'failed' | 'not-invited') {
@@ -30,15 +30,13 @@ export async function GET(request: NextRequest) {
     const profile = await fetchGoogleProfile({ accessToken: tokens.access_token });
     const email = normalizeEmail(profile.email);
     console.log('[Google OAuth] Profile email:', email);
-    const invite = await prisma.alphaInvite.findUnique({ where: { email } });
-    console.log('[Google OAuth] Invite found:', invite);
 
-    if (!canAccessPrivateAlpha(invite)) {
-      console.warn('[Google OAuth] User not invited:', email);
-      const response = redirectTo('not-invited');
-      response.cookies.delete('pap_oauth_state');
-      return response;
-    }
+    // Auto-accept: create invite if not exists
+    await prisma.alphaInvite.upsert({
+      where: { email },
+      update: { status: 'accepted' },
+      create: { email, status: 'accepted', acceptedAt: new Date() },
+    });
 
     const user = await prisma.user.upsert({
       where: { email },
@@ -54,13 +52,6 @@ export async function GET(request: NextRequest) {
         lastLoginAt: new Date(),
       },
     });
-
-    if (invite?.status === 'invited') {
-      await prisma.alphaInvite.update({
-        where: { email },
-        data: { status: 'accepted', acceptedAt: new Date() },
-      });
-    }
 
     const expiresAt = typeof tokens.expires_in === 'number'
       ? new Date(Date.now() + tokens.expires_in * 1000)

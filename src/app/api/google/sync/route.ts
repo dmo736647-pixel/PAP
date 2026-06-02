@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { syncGoogleSnapshots } from '@/lib/pap/google-sync';
-import { prisma } from '@/lib/pap/prisma';
-import { canAccessPrivateAlpha } from '@/lib/pap/private-alpha-access';
 import { papSessionCookieName, parseSessionCookieValue } from '@/lib/pap/session';
 
 export const maxDuration = 10;
@@ -12,11 +10,6 @@ export async function POST(request: NextRequest) {
 
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const invite = await prisma.alphaInvite.findUnique({ where: { email: session.email } });
-  if (!canAccessPrivateAlpha(invite)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   try {
