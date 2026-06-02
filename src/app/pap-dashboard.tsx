@@ -1154,20 +1154,22 @@ function extractPlatformName(from: string): string {
     if (!name.includes('@') && name.length > 1) return name;
   }
 
-  // 2. 从邮箱地址提取: 取 @ 后面的域名第一段
+  // 2. 从邮箱地址提取
   const emailMatch = from.match(/@([a-zA-Z0-9.-]+)/);
   if (emailMatch) {
     const domain = emailMatch[1].toLowerCase();
-    // "neon.tech" → "neon", "accounts.google.com" → "google",
-    // "noreply@redditmail.com" → "redditmail", "email.supabase.com" → "supabase"
     const domainParts = domain.split('.');
-    // 取第一段（子域名或主域名）
-    const name = domainParts[0];
-    // 跳过无意义的前缀
-    if (['www', 'mail', 'email', 'noreply', 'no-reply', 'notifications', 'support'].includes(name) && domainParts.length > 1) {
-      return capitalize(domainParts[1]);
+    let name = domainParts[0];
+
+    // 跳过无意义的子域名前缀
+    if (['www', 'mail', 'email', 'noreply', 'no-reply', 'notifications', 'support', 'info'].includes(name) && domainParts.length > 1) {
+      name = domainParts[1];
     }
-    return capitalize(name);
+
+    // 去掉常见后缀: "redditmail" → "reddit", "openai" → "openai"
+    name = name.replace(/(mail|email|notify|notification|updates?|alerts?)$/, '');
+
+    return capitalize(name || domainParts[0]);
   }
 
   return from;
@@ -1431,7 +1433,7 @@ function OriginalEmail(props: { email: EmailMessage; locale: Locale }) {
         </div>
         <DetailLine label={t.subject}>{props.email.subject}</DetailLine>
         <DetailLine label={t.received}>{new Date(props.email.receivedAt).toLocaleString(props.locale === 'zh' ? 'zh-CN' : 'en-US', { dateStyle: 'full', timeStyle: 'short' })}</DetailLine>
-        <div className="rounded-2xl bg-stone-950/70 p-4 leading-7 text-stone-200">
+        <div className="max-h-80 overflow-y-auto rounded-2xl bg-stone-950/70 p-4 leading-7 text-stone-200 break-words whitespace-pre-wrap">
           {props.email.body}
         </div>
       </div>
