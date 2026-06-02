@@ -1151,22 +1151,30 @@ function extractPlatformName(from: string): string {
   const displayMatch = from.match(/^(.*?)\s*<.*>$/);
   if (displayMatch) {
     const name = displayMatch[1].trim();
-    // 排除纯邮箱前缀作为显示名的情况
     if (!name.includes('@') && name.length > 1) return name;
   }
 
-  // 2. 从域名提取: "noreply@supabase.com" → "Supabase"
+  // 2. 从邮箱地址提取: 取 @ 后面的域名第一段
   const emailMatch = from.match(/@([a-zA-Z0-9.-]+)/);
   if (emailMatch) {
-    const domain = emailMatch[1];
-    // 取主域名: "accounts.google.com" → "google", "noreply.redditmail.com" → "redditmail"
-    const parts = domain.replace(/\.(com|org|net|io|co|dev|app|ai|xyz|info|me)$/, '').split('.');
-    const mainDomain = parts[parts.length - 1] ?? domain;
-    // 首字母大写
-    return mainDomain.charAt(0).toUpperCase() + mainDomain.slice(1);
+    const domain = emailMatch[1].toLowerCase();
+    // "neon.tech" → "neon", "accounts.google.com" → "google",
+    // "noreply@redditmail.com" → "redditmail", "email.supabase.com" → "supabase"
+    const domainParts = domain.split('.');
+    // 取第一段（子域名或主域名）
+    const name = domainParts[0];
+    // 跳过无意义的前缀
+    if (['www', 'mail', 'email', 'noreply', 'no-reply', 'notifications', 'support'].includes(name) && domainParts.length > 1) {
+      return capitalize(domainParts[1]);
+    }
+    return capitalize(name);
   }
 
   return from;
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function actionRationaleZh(action: SuggestedAction): string {

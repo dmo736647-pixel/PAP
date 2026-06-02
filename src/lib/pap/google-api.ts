@@ -49,7 +49,7 @@ export const googleRestClient: GoogleReadOnlyClient = {
     for (let i = 0; i < sliced.length; i += batchSize) {
       const batch = sliced.slice(i, i + batchSize);
       const batchResults = await Promise.all(batch.map(async (message) => {
-        const detailResponse = await proxyFetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`, {
+        const detailResponse = await proxyFetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=full`, {
           headers: { authorization: `Bearer ${accessToken}` },
         });
 
@@ -57,15 +57,10 @@ export const googleRestClient: GoogleReadOnlyClient = {
           throw new Error(`Gmail message fetch failed: ${detailResponse.status}`);
         }
 
-        const detail = await detailResponse.json() as {
-          id: string;
-          threadId?: string;
-          snippet?: string;
-          labelIds?: string[];
-          payload?: { headers?: Array<{ name: string; value: string }> };
-        };
+        const detail = await detailResponse.json() as GmailFullMessage;
         const headers = detail.payload?.headers ?? [];
         const header = (name: string) => headers.find((item) => item.name.toLowerCase() === name.toLowerCase())?.value ?? '';
+        const bodyText = extractPlainText(detail.payload) || detail.snippet || '';
 
         return {
           googleMessageId: detail.id,
@@ -73,10 +68,10 @@ export const googleRestClient: GoogleReadOnlyClient = {
           from: header('From'),
           to: splitAddresses(header('To')),
           subject: header('Subject'),
-          snippet: detail.snippet ?? '',
+          snippet: bodyText.slice(0, 2000),
           receivedAt: parseDateHeader(header('Date')),
           labels: detail.labelIds ?? [],
-          rawMetadataJson: detail,
+          rawMetadataJson: { id: detail.id, threadId: detail.threadId, snippet: detail.snippet, labelIds: detail.labelIds },
         };
       }));
       results.push(...batchResults);
@@ -152,6 +147,83 @@ function sanitizeCalendarEventMetadata(event: {
 
 function splitAddresses(value: string): string[] {
   return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+type GmailMessagePart = {
+  mimeType?: string;
+  body?: { data?: string; size?: number };
+  parts?: GmailMessagePart[];
+  headers?: Array<{ name: string; value: string }>;
+};
+
+type GmailFullMessage = {
+  id: string;
+  threadId?: string;
+  snippet?: string;
+  labelIds?: string[];
+  payload?: GmailMessagePart;
+};
+
+function extractPlainText(part: GmailMessagePart | undefined): string {
+  if (!part) return '';
+
+  // If this part is plain text, decode it
+  if (part.mimeType === 'text/plain' && part.body?.data) {
+    return decodeBase64Url(part.body.data);
+  }
+
+  // Recursively search in parts (multipart messages)
+  if (part.parts) {
+    // Prefer text/plain over text/html
+    for (const subPart of part.parts) {
+      if (subPart.mimeType === 'text/plain') {
+        const text = extractPlainText(subPart);
+        if (text) return text;
+      }
+    }
+    // Fallback: strip HTML tags from text/html
+    for (const subPart of part.parts) {
+      if (subPart.mimeType === 'text/html' && subPart.body?.data) {
+        const html = decodeBase64Url(subPart.body.data);
+        return stripHtml(html);
+      }
+    }
+    // Recurse into nested multipart
+    for (const subPart of part.parts) {
+      const text = extractPlainText(subPart);
+      if (text) return text;
+    }
+  }
+
+  return '';
+}
+
+function decodeBase64Url(data: string): string {
+  try {
+    // Gmail uses base64url encoding (RFC 4648 §5)
+    const base64 = data.replace(/-/g, '+').replace(/_/g, '/');
+    return Buffer.from(base64, 'base64').toString('utf-8');
+  } catch {
+    return '';
+  }
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function parseDateHeader(value: string): Date {
