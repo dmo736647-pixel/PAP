@@ -23,6 +23,7 @@ export function createDailyBriefing(input: {
       lowValueHandledCount,
     ),
     importantEmails,
+    allTriagedEmails: input.triagedEmails,
     pendingConfirmations,
     automaticallyHandled,
     meetingSuggestions: input.meetingSuggestions,

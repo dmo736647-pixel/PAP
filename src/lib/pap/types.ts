@@ -126,6 +126,7 @@ export interface DailyBriefing {
   date: string;
   topPriorities: string[];
   importantEmails: TriagedEmail[];
+  allTriagedEmails?: TriagedEmail[];
   pendingConfirmations: SuggestedAction[];
   automaticallyHandled: SuggestedAction[];
   meetingSuggestions: MeetingSuggestion[];

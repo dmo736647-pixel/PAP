@@ -535,7 +535,8 @@ export default function Dashboard() {
     const map = new Map(sampleEmails.map((email) => [email.id, email]));
     // Merge emails from Google workspace briefing (if live data)
     if (briefingSource === 'live_google' && googleBriefing) {
-      for (const triaged of googleBriefing.importantEmails) {
+      const allEmails = googleBriefing.allTriagedEmails ?? googleBriefing.importantEmails;
+      for (const triaged of allEmails) {
         map.set(triaged.email.id, triaged.email);
       }
     }
@@ -825,6 +826,7 @@ export default function Dashboard() {
             <AutomationLogCard
               key={action.id}
               action={action}
+              email={emailsById.get(action.emailId)}
               locale={locale}
               onUndo={() => recordActionResult(action, 'undone')}
               onWrong={() => recordActionResult(action, 'wrong')}
@@ -1144,8 +1146,48 @@ function PendingConfirmationCard(props: {
   );
 }
 
+function extractPlatformName(from: string): string {
+  // "Reddit <noreply@redditmail.com>" → "Reddit"
+  // "Google <no-reply@accounts.google.com>" → "Google"
+  // "Cursor <hi@cursor.com>" → "Cursor"
+  const match = from.match(/^(.*?)\s*<.*>$/);
+  if (match) return match[1].trim();
+  // "noreply@redditmail.com" → "redditmail"
+  const local = from.split('@')[0] ?? from;
+  return local.replace(/noreply|no-reply|donotreply|notifications?|mail|support/i, '').trim() || from;
+}
+
+function actionRationaleZh(action: SuggestedAction): string {
+  if (action.type === 'archive' && action.rationale.includes('spam')) {
+    return '垃圾邮件 — 自动归档';
+  }
+  if (action.type === 'archive' && action.rationale.includes('verification')) {
+    return '验证码/OTP — 用完即归档';
+  }
+  if (action.type === 'archive' && action.rationale.includes('Marketing')) {
+    return '营销广告 — 自动归档';
+  }
+  if (action.type === 'archive') {
+    return '低价值邮件 — 自动归档';
+  }
+  if (action.type === 'summarize') {
+    return '资讯/订阅 — 自动总结';
+  }
+  if (action.type === 'label' && action.rationale.includes('notification')) {
+    return '系统通知 — 仅作记录';
+  }
+  if (action.type === 'label' && action.rationale.includes('receipt')) {
+    return '收据/订单 — 仅作记录';
+  }
+  if (action.type === 'label' && action.rationale.includes('Social')) {
+    return '社交通知 — 低优先级';
+  }
+  return action.rationale;
+}
+
 function AutomationLogCard(props: {
   action: SuggestedAction;
+  email?: EmailMessage;
   locale: Locale;
   onUndo: () => void;
   onWrong: () => void;
@@ -1153,6 +1195,8 @@ function AutomationLogCard(props: {
 }) {
   const t = copy[props.locale];
   const action = localizedAction(props.action, props.locale);
+  const platformName = props.email ? extractPlatformName(props.email.from) : action.sourceSubject;
+  const rationale = props.locale === 'zh' ? actionRationaleZh(props.action) : action.rationale;
 
   return (
     <article className="rounded-3xl border border-emerald-300/10 bg-stone-950/70 p-5 shadow-lg shadow-black/20">
@@ -1160,15 +1204,15 @@ function AutomationLogCard(props: {
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{t.actionTaken}</p>
           <h3 className="mt-2 text-xl font-semibold text-stone-50">{action.title}</h3>
-          <p className="mt-2 text-sm leading-6 text-stone-300">{action.recommendation}</p>
         </div>
         <Chip>{props.action.canUndo ? t.undoAvailable : t.undoUnavailable}</Chip>
       </div>
       <div className="mt-4 grid gap-3 rounded-2xl bg-[#07110f] p-4 text-sm ring-1 ring-white/5 md:grid-cols-2">
-        <DetailLine label={t.rule}>{action.rationale}</DetailLine>
-        <DetailLine label={t.source}>{action.sourceSubject}</DetailLine>
+        <DetailLine label={props.locale === 'zh' ? '依据' : 'Rule'}>{rationale}</DetailLine>
+        <DetailLine label={props.locale === 'zh' ? '来源' : 'Source'}>{platformName}</DetailLine>
       </div>
-      <div className="mt-5 flex flex-wrap gap-2">
+      {props.email && <OriginalEmail email={props.email} locale={props.locale} />}
+      <div className="mt-4 flex flex-wrap gap-2">
         {props.action.canUndo && (
           <button className="rounded-full bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950" onClick={props.onUndo}>{t.undo}</button>
         )}
